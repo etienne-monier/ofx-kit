@@ -249,3 +249,18 @@ This project is a fork of [Govcraft/ofx-rs](https://github.com/Govcraft/ofx-rs).
 
 Read the [documentation site](https://etienne-monier.github.io/ofx-kit/) for
 tutorials and explanations, or consult the [API reference on docs.rs](https://docs.rs/ofx-kit).
+
+## CLI
+
+The workspace also provides an `ofx` command for inspecting, validating, and
+decoding files:
+
+```sh
+ofx inspect statement.ofx
+ofx inspect statement.ofx --json
+ofx validate statement.ofx --json
+ofx decode statement.ofx > statement-utf8.ofx
+```
+
+See the [CLI reference](https://etienne-monier.github.io/ofx-kit/reference/cli/)
+for filters, JSON output, and exit codes.

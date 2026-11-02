@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Nothing yet.
+- `ofx inspect`, `ofx validate`, and `ofx decode` commands.
+- Stable JSON output for inspection and validation.
 
 ## [0.3.0] - 2026-11-02
 

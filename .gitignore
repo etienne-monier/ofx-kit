@@ -11,6 +11,7 @@
 !RELEASING.md
 !AGENTS.md
 !ROADMAP.md
+!docs/src/content/docs/**/*.md
 
 # Rust / Cargo
 /target/

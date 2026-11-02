@@ -101,6 +101,8 @@ CJK code pages. This should allow Pactole to remove its duplicate decoder.
 
 ### 2. CLI inspection and validation
 
+**Status: completed.**
+
 Implement:
 
 ```text
@@ -108,6 +110,7 @@ ofx inspect statement.ofx
 ofx inspect statement.ofx --json
 ofx validate statement.ofx
 ofx decode statement.ofx
+ofx validate statement.ofx --json
 ```
 
 `inspect` should show format/version, encoding and warnings, signon status,
@@ -119,6 +122,10 @@ Use color only for a TTY and honor `NO_COLOR` / `--no-color`. Define exit codes:
 presentation dependencies out of the library package.
 
 Add CLI integration tests and stable JSON-output tests.
+
+The CLI also supports credit-card and investment statements, exact `--account`
+filtering, date filtering, per-statement transaction limits, structural JSON
+validation reports, TTY-aware color, `NO_COLOR`, and exit codes 0/1/2.
 
 ### 3. Robust SGML handling
 
