@@ -85,7 +85,11 @@ mod tests {
             ("OTHERNONVEST", Inv401kSource::OtherNonVest),
         ];
         for (s, expected) in cases {
-            assert_eq!(s.parse::<Inv401kSource>().unwrap(), expected, "failed for {s}");
+            assert_eq!(
+                s.parse::<Inv401kSource>().unwrap(),
+                expected,
+                "failed for {s}"
+            );
         }
     }
 

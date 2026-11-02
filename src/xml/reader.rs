@@ -1,5 +1,5 @@
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use super::XmlError;
 
@@ -36,7 +36,7 @@ impl<'a> OfxReader<'a> {
         loop {
             self.buf.clear();
             match self.reader.read_event_into(&mut self.buf) {
-                Ok(Event::Comment(_) | Event::Decl(_) | Event::PI(_)) => {},
+                Ok(Event::Comment(_) | Event::Decl(_) | Event::PI(_)) => {}
                 Ok(event) => return Ok(event.into_owned()),
                 Err(e) => {
                     return Err(XmlError::MalformedXml {
@@ -210,10 +210,7 @@ impl<'a> OfxReader<'a> {
     /// After reading a Start event, determine if the element contains text or
     /// child elements. Returns either the text content or a flattened list of
     /// child (tag, text) pairs.
-    fn read_text_or_children(
-        &mut self,
-        tag_name: &str,
-    ) -> Result<TextOrChildren, XmlError> {
+    fn read_text_or_children(&mut self, tag_name: &str) -> Result<TextOrChildren, XmlError> {
         let mut text = String::new();
         loop {
             match self.next_event()? {

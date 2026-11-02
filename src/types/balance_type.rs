@@ -59,9 +59,18 @@ mod tests {
 
     #[test]
     fn parse_all_variants() {
-        assert_eq!("DOLLAR".parse::<BalanceType>().unwrap(), BalanceType::Dollar);
-        assert_eq!("PERCENT".parse::<BalanceType>().unwrap(), BalanceType::Percent);
-        assert_eq!("NUMBER".parse::<BalanceType>().unwrap(), BalanceType::Number);
+        assert_eq!(
+            "DOLLAR".parse::<BalanceType>().unwrap(),
+            BalanceType::Dollar
+        );
+        assert_eq!(
+            "PERCENT".parse::<BalanceType>().unwrap(),
+            BalanceType::Percent
+        );
+        assert_eq!(
+            "NUMBER".parse::<BalanceType>().unwrap(),
+            BalanceType::Number
+        );
     }
 
     #[test]
@@ -71,7 +80,11 @@ mod tests {
 
     #[test]
     fn display_roundtrip() {
-        for v in [BalanceType::Dollar, BalanceType::Percent, BalanceType::Number] {
+        for v in [
+            BalanceType::Dollar,
+            BalanceType::Percent,
+            BalanceType::Number,
+        ] {
             assert_eq!(v.to_string().parse::<BalanceType>().unwrap(), v);
         }
     }

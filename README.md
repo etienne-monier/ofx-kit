@@ -1,4 +1,4 @@
-# ofx-rs
+# ofx-kit
 
 A Rust library for parsing Open Financial Exchange (OFX) documents into strongly-typed structures.
 
@@ -237,8 +237,10 @@ No runtime, no async, no macros, no build scripts.
 
 ## Minimum Supported Rust Version
 
-This crate uses `edition = "2024"` and requires **Rust 1.85** or later.
+This crate uses `edition = "2024"` and requires **Rust 1.90** or later.
 
 ## License
 
-MIT
+MIT -- see [LICENSE-MIT](LICENSE-MIT).
+
+This project is a fork of [Govcraft/ofx-rs](https://github.com/Govcraft/ofx-rs). The original code is copyright (c) 2025 Roland Rodriguez; modifications are copyright (c) 2026 Etienne Monier.

@@ -145,10 +145,7 @@ fn handle_open_tag(
     output: &mut String,
     aggregates: &HashSet<&str>,
 ) {
-    let tag_name = tag_content
-        .split_whitespace()
-        .next()
-        .unwrap_or(tag_content);
+    let tag_name = tag_content.split_whitespace().next().unwrap_or(tag_content);
 
     // If current top-of-stack is a leaf, close it first
     if let Some(top) = stack.last() {
@@ -212,7 +209,11 @@ pub fn normalize_sgml_to_xml(input: &str) -> String {
 
             if let Some(close_name) = tag_content.strip_prefix('/') {
                 handle_close_tag(
-                    close_name.trim(), &trimmed_text, &mut stack, &mut output, &aggregates,
+                    close_name.trim(),
+                    &trimmed_text,
+                    &mut stack,
+                    &mut output,
+                    &aggregates,
                 );
             } else if tag_content.starts_with('?') || tag_content.starts_with('!') {
                 output.push('<');
@@ -220,7 +221,11 @@ pub fn normalize_sgml_to_xml(input: &str) -> String {
                 output.push('>');
             } else {
                 handle_open_tag(
-                    tag_content, &trimmed_text, &mut stack, &mut output, &aggregates,
+                    tag_content,
+                    &trimmed_text,
+                    &mut stack,
+                    &mut output,
+                    &aggregates,
                 );
             }
         } else {
@@ -257,26 +262,57 @@ pub fn normalize_sgml_to_xml(input: &str) -> String {
 /// Returns true if `child` is a valid direct child aggregate of `parent`.
 fn is_valid_child(parent: &str, child: &str) -> bool {
     let children: &[&str] = match parent {
-        "OFX" => &["SIGNONMSGSRSV1", "SIGNONMSGSRQV1", "BANKMSGSRSV1", "BANKMSGSRQV1",
-                    "CREDITCARDMSGSRSV1", "CREDITCARDMSGSRQV1", "INVSTMTMSGSRSV1",
-                    "SECLISTMSGSRSV1"],
+        "OFX" => &[
+            "SIGNONMSGSRSV1",
+            "SIGNONMSGSRQV1",
+            "BANKMSGSRSV1",
+            "BANKMSGSRQV1",
+            "CREDITCARDMSGSRSV1",
+            "CREDITCARDMSGSRQV1",
+            "INVSTMTMSGSRSV1",
+            "SECLISTMSGSRSV1",
+        ],
         "SIGNONMSGSRSV1" => &["SONRS"],
         "SIGNONMSGSRQV1" => &["SONRQ"],
         "SONRS" | "SONRQ" => &["STATUS", "FI"],
         "BANKMSGSRSV1" => &["STMTTRNRS", "STMTTRNRQ"],
         "STMTTRNRS" => &["STATUS", "STMTRS"],
         "STMTTRNRQ" => &["STMTRQ"],
-        "STMTRS" => &["BANKACCTFROM", "BANKTRANLIST", "LEDGERBAL", "AVAILBAL", "BALLIST"],
+        "STMTRS" => &[
+            "BANKACCTFROM",
+            "BANKTRANLIST",
+            "LEDGERBAL",
+            "AVAILBAL",
+            "BALLIST",
+        ],
         "STMTRQ" => &["BANKACCTFROM"],
         "BANKTRANLIST" | "INVBANKTRAN" => &["STMTTRN"],
-        "STMTTRN" => &["PAYEE", "BANKACCTTO", "CCACCTTO", "CURRENCY", "ORIGCURRENCY"],
+        "STMTTRN" => &[
+            "PAYEE",
+            "BANKACCTTO",
+            "CCACCTTO",
+            "CURRENCY",
+            "ORIGCURRENCY",
+        ],
         "BALLIST" => &["BAL"],
         "CREDITCARDMSGSRSV1" => &["CCSTMTTRNRS", "CCSTMTTRNRQ"],
         "CCSTMTTRNRS" => &["STATUS", "CCSTMTRS"],
-        "CCSTMTRS" => &["CCACCTFROM", "BANKTRANLIST", "LEDGERBAL", "AVAILBAL", "BALLIST"],
+        "CCSTMTRS" => &[
+            "CCACCTFROM",
+            "BANKTRANLIST",
+            "LEDGERBAL",
+            "AVAILBAL",
+            "BALLIST",
+        ],
         "INVSTMTMSGSRSV1" => &["INVSTMTTRNRS"],
         "INVSTMTTRNRS" => &["STATUS", "INVSTMTRS"],
-        "INVSTMTRS" => &["INVACCTFROM", "INVTRANLIST", "INVPOSLIST", "INVBAL", "INVOOLIST"],
+        "INVSTMTRS" => &[
+            "INVACCTFROM",
+            "INVTRANLIST",
+            "INVPOSLIST",
+            "INVBAL",
+            "INVOOLIST",
+        ],
         "INVTRANLIST" => &["BUYSTOCK", "INVBANKTRAN"],
         "BUYSTOCK" => &["INVBUY"],
         "INVBUY" => &["INVTRAN", "SECID"],
@@ -301,7 +337,10 @@ fn is_valid_child(parent: &str, child: &str) -> bool {
 fn is_valid_leaf_parent(parent: &str, leaf: &str) -> bool {
     // STATUS contains CODE and SEVERITY
     if parent == "STATUS" {
-        return matches!(leaf, "CODE" | "SEVERITY" | "MESSAGE" | "CODEVALIDATION" | "USERKEY");
+        return matches!(
+            leaf,
+            "CODE" | "SEVERITY" | "MESSAGE" | "CODEVALIDATION" | "USERKEY"
+        );
     }
     // FI contains ORG and FID
     if parent == "FI" {
@@ -326,9 +365,23 @@ fn is_valid_leaf_parent(parent: &str, leaf: &str) -> bool {
     if parent == "STMTTRN" {
         return matches!(
             leaf,
-            "TRNTYPE" | "DTPOSTED" | "DTUSER" | "DTAVAIL" | "TRNAMT" | "FITID"
-            | "SRVRTID" | "CHECKNUM" | "REFNUM" | "SIC" | "PAYEEID" | "NAME"
-            | "EXTDBINFON" | "MEMO" | "CORRECTFITID" | "CORRECTACTION" | "INV401KSOURCE"
+            "TRNTYPE"
+                | "DTPOSTED"
+                | "DTUSER"
+                | "DTAVAIL"
+                | "TRNAMT"
+                | "FITID"
+                | "SRVRTID"
+                | "CHECKNUM"
+                | "REFNUM"
+                | "SIC"
+                | "PAYEEID"
+                | "NAME"
+                | "EXTDBINFON"
+                | "MEMO"
+                | "CORRECTFITID"
+                | "CORRECTACTION"
+                | "INV401KSOURCE"
         );
     }
     // LEDGERBAL and AVAILBAL contain BALAMT and DTASOF
@@ -345,7 +398,10 @@ fn is_valid_leaf_parent(parent: &str, leaf: &str) -> bool {
     }
     // SECINFO
     if parent == "SECINFO" {
-        return matches!(leaf, "SECNAME" | "TICKER" | "FIID" | "RATING" | "UNITPRICE" | "DTASOF" | "CURRENCY" | "MEMO");
+        return matches!(
+            leaf,
+            "SECNAME" | "TICKER" | "FIID" | "RATING" | "UNITPRICE" | "DTASOF" | "CURRENCY" | "MEMO"
+        );
     }
     // For aggregates not listed here, assume any leaf could be a direct child
     // (conservative: don't close unnecessarily)
@@ -485,4 +541,3 @@ mod tests {
         assert!(result.contains("<BANKMSGSRSV1>"));
     }
 }
-

@@ -336,9 +336,7 @@ impl StatementTransactionBuilder {
     /// Returns an error if any required field (`TRNTYPE`, `DTPOSTED`, `TRNAMT`, `FITID`) is missing.
     pub fn build(self) -> Result<StatementTransaction, String> {
         Ok(StatementTransaction {
-            transaction_type: self
-                .transaction_type
-                .ok_or("TRNTYPE is required")?,
+            transaction_type: self.transaction_type.ok_or("TRNTYPE is required")?,
             date_posted: self.date_posted.ok_or("DTPOSTED is required")?,
             date_user: self.date_user,
             date_available: self.date_available,
@@ -386,7 +384,10 @@ mod tests {
     fn minimal_transaction_succeeds() {
         let txn = minimal_transaction();
         assert_eq!(txn.transaction_type(), TransactionType::Debit);
-        assert_eq!(txn.amount().as_decimal(), rust_decimal::Decimal::new(-5000, 2));
+        assert_eq!(
+            txn.amount().as_decimal(),
+            rust_decimal::Decimal::new(-5000, 2)
+        );
         assert_eq!(txn.fit_id().as_str(), "1001");
         assert!(txn.name().is_none());
         assert!(txn.memo().is_none());

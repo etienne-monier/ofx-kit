@@ -62,10 +62,15 @@ impl FromStr for OfxVersion {
 
         let chars: Vec<char> = s.chars().collect();
 
-        let make_err = || InvalidOfxVersion { value: s.to_owned() };
-        let major = u8::try_from(chars[0].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
-        let minor = u8::try_from(chars[1].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
-        let patch = u8::try_from(chars[2].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
+        let make_err = || InvalidOfxVersion {
+            value: s.to_owned(),
+        };
+        let major =
+            u8::try_from(chars[0].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
+        let minor =
+            u8::try_from(chars[1].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
+        let patch =
+            u8::try_from(chars[2].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
 
         Ok(Self {
             major,

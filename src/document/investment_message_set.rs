@@ -9,9 +9,7 @@ pub struct InvestmentMessageSet {
 impl InvestmentMessageSet {
     /// Creates a new `InvestmentMessageSet`.
     #[must_use]
-    pub const fn new(
-        statement_responses: Vec<TransactionWrapper<InvStatementResponse>>,
-    ) -> Self {
+    pub const fn new(statement_responses: Vec<TransactionWrapper<InvStatementResponse>>) -> Self {
         Self {
             statement_responses,
         }

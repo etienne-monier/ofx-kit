@@ -21,7 +21,10 @@ pub struct CcStatementResponse {
 impl CcStatementResponse {
     /// Creates a new `CcStatementResponse`.
     #[must_use]
-    pub const fn new(currency_default: CurrencyCode, credit_card_account: CreditCardAccount) -> Self {
+    pub const fn new(
+        currency_default: CurrencyCode,
+        credit_card_account: CreditCardAccount,
+    ) -> Self {
         Self {
             currency_default,
             credit_card_account,

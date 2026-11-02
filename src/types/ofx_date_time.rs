@@ -69,7 +69,10 @@ impl fmt::Display for InvalidOfxDateTime {
         match self {
             Self::Empty => f.write_str("datetime cannot be empty"),
             Self::TooShort { length } => {
-                write!(f, "datetime too short ({length} chars), minimum is 8 (YYYYMMDD)")
+                write!(
+                    f,
+                    "datetime too short ({length} chars), minimum is 8 (YYYYMMDD)"
+                )
             }
             Self::InvalidYear { value } => {
                 write!(f, "invalid year: '{value}'")
@@ -105,11 +108,18 @@ impl fmt::Display for InvalidOfxDateTime {
 impl std::error::Error for InvalidOfxDateTime {}
 
 /// Parse exactly `n` digits from `s` starting at `offset`, returning the numeric value.
-fn parse_digits(s: &str, offset: usize, count: usize, field: &str) -> Result<u32, InvalidOfxDateTime> {
+fn parse_digits(
+    s: &str,
+    offset: usize,
+    count: usize,
+    field: &str,
+) -> Result<u32, InvalidOfxDateTime> {
     let slice = &s[offset..offset + count];
-    slice.parse::<u32>().map_err(|_| InvalidOfxDateTime::InvalidFormat {
-        detail: format!("expected {count} digits for {field}, got '{slice}'"),
-    })
+    slice
+        .parse::<u32>()
+        .map_err(|_| InvalidOfxDateTime::InvalidFormat {
+            detail: format!("expected {count} digits for {field}, got '{slice}'"),
+        })
 }
 
 /// Parse the timezone offset portion: `[gmt_offset[:tz_name]]`
@@ -132,9 +142,10 @@ fn parse_offset(bracket_content: &str) -> Result<UtcOffset, InvalidOfxDateTime> 
     // These values are bounded by valid UTC offsets (-26h..+26h), so the casts are safe.
     #[allow(clippy::cast_possible_truncation)]
     let total_seconds = hours_f.mul_add(3600.0, 0.5_f64.copysign(hours_f)) as i32;
-    let hours = i8::try_from(total_seconds / 3600).map_err(|_| InvalidOfxDateTime::InvalidOffset {
-        value: bracket_content.to_owned(),
-    })?;
+    let hours =
+        i8::try_from(total_seconds / 3600).map_err(|_| InvalidOfxDateTime::InvalidOffset {
+            value: bracket_content.to_owned(),
+        })?;
     let remaining = (total_seconds % 3600).abs();
     let minutes = i8::try_from(remaining / 60).map_err(|_| InvalidOfxDateTime::InvalidOffset {
         value: bracket_content.to_owned(),
@@ -158,10 +169,9 @@ fn month_from_u8(m: u8) -> Result<Month, InvalidOfxDateTime> {
 /// Returns (hour, minute, second, millisecond).
 fn parse_time_portion(remaining: &str) -> Result<(u8, u8, u8, u16), InvalidOfxDateTime> {
     // Split on '.' to separate time digits from fractional seconds
-    let (time_digits, frac_str) = remaining.find('.').map_or(
-        (remaining, None),
-        |dot_pos| (&remaining[..dot_pos], Some(&remaining[dot_pos + 1..])),
-    );
+    let (time_digits, frac_str) = remaining.find('.').map_or((remaining, None), |dot_pos| {
+        (&remaining[..dot_pos], Some(&remaining[dot_pos + 1..]))
+    });
 
     let h = if time_digits.len() >= 2 {
         let v = parse_digits(time_digits, 0, 2, "hour")?;
@@ -170,7 +180,9 @@ fn parse_time_portion(remaining: &str) -> Result<(u8, u8, u8, u16), InvalidOfxDa
                 value: v.to_string(),
             });
         }
-        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidHour { value: v.to_string() })?
+        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidHour {
+            value: v.to_string(),
+        })?
     } else {
         0
     };
@@ -182,7 +194,9 @@ fn parse_time_portion(remaining: &str) -> Result<(u8, u8, u8, u16), InvalidOfxDa
                 value: v.to_string(),
             });
         }
-        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidMinute { value: v.to_string() })?
+        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidMinute {
+            value: v.to_string(),
+        })?
     } else {
         0
     };
@@ -194,7 +208,9 @@ fn parse_time_portion(remaining: &str) -> Result<(u8, u8, u8, u16), InvalidOfxDa
                 value: v.to_string(),
             });
         }
-        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidSecond { value: v.to_string() })?
+        u8::try_from(v).map_err(|_| InvalidOfxDateTime::InvalidSecond {
+            value: v.to_string(),
+        })?
     } else {
         0
     };
@@ -209,9 +225,11 @@ fn parse_time_portion(remaining: &str) -> Result<(u8, u8, u8, u16), InvalidOfxDa
             } else {
                 format!("{frac:0<3}")
             };
-            padded.parse::<u16>().map_err(|_| InvalidOfxDateTime::InvalidFraction {
-                value: frac.to_owned(),
-            })
+            padded
+                .parse::<u16>()
+                .map_err(|_| InvalidOfxDateTime::InvalidFraction {
+                    value: frac.to_owned(),
+                })
         }
     })?;
 
@@ -228,17 +246,18 @@ impl FromStr for OfxDateTime {
         }
 
         // Find the bracket portion (timezone) if present, and the main datetime portion
-        let (datetime_part, offset) = s.find('[').map_or(
-            Ok((s, UtcOffset::UTC)),
-            |bracket_start| {
-                let bracket_end = s.find(']').ok_or_else(|| InvalidOfxDateTime::InvalidOffset {
-                    value: s[bracket_start..].to_owned(),
+        let (datetime_part, offset) =
+            s.find('[')
+                .map_or(Ok((s, UtcOffset::UTC)), |bracket_start| {
+                    let bracket_end =
+                        s.find(']')
+                            .ok_or_else(|| InvalidOfxDateTime::InvalidOffset {
+                                value: s[bracket_start..].to_owned(),
+                            })?;
+                    let bracket_content = &s[bracket_start + 1..bracket_end];
+                    let offset = parse_offset(bracket_content)?;
+                    Ok((&s[..bracket_start], offset))
                 })?;
-                let bracket_content = &s[bracket_start + 1..bracket_end];
-                let offset = parse_offset(bracket_content)?;
-                Ok((&s[..bracket_start], offset))
-            },
-        )?;
 
         // Minimum: YYYYMMDD (8 chars)
         if datetime_part.len() < 8 {
@@ -261,11 +280,16 @@ impl FromStr for OfxDateTime {
         let year = i32::try_from(year_u32).map_err(|_| InvalidOfxDateTime::InvalidYear {
             value: datetime_part[..4].to_owned(),
         })?;
-        let month_num = u8::try_from(parse_digits(datetime_part, 4, 2, "month")?).map_err(|_| {
-            InvalidOfxDateTime::InvalidMonth { value: datetime_part[4..6].to_owned() }
-        })?;
+        let month_num =
+            u8::try_from(parse_digits(datetime_part, 4, 2, "month")?).map_err(|_| {
+                InvalidOfxDateTime::InvalidMonth {
+                    value: datetime_part[4..6].to_owned(),
+                }
+            })?;
         let day = u8::try_from(parse_digits(datetime_part, 6, 2, "day")?).map_err(|_| {
-            InvalidOfxDateTime::InvalidDay { value: datetime_part[6..8].to_owned() }
+            InvalidOfxDateTime::InvalidDay {
+                value: datetime_part[6..8].to_owned(),
+            }
         })?;
 
         if month_num == 0 || month_num > 12 {

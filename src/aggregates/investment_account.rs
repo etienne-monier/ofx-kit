@@ -37,10 +37,7 @@ mod tests {
 
     #[test]
     fn investment_account_accessors() {
-        let acct = InvestmentAccount::new(
-            "121099999".to_owned(),
-            "999988".parse().unwrap(),
-        );
+        let acct = InvestmentAccount::new("121099999".to_owned(), "999988".parse().unwrap());
         assert_eq!(acct.broker_id(), "121099999");
         assert_eq!(acct.account_id().as_str(), "999988");
     }

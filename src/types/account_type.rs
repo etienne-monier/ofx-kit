@@ -63,10 +63,22 @@ mod tests {
 
     #[test]
     fn parse_all_variants() {
-        assert_eq!("CHECKING".parse::<AccountType>().unwrap(), AccountType::Checking);
-        assert_eq!("SAVINGS".parse::<AccountType>().unwrap(), AccountType::Savings);
-        assert_eq!("MONEYMRKT".parse::<AccountType>().unwrap(), AccountType::MoneyMarket);
-        assert_eq!("CREDITLINE".parse::<AccountType>().unwrap(), AccountType::CreditLine);
+        assert_eq!(
+            "CHECKING".parse::<AccountType>().unwrap(),
+            AccountType::Checking
+        );
+        assert_eq!(
+            "SAVINGS".parse::<AccountType>().unwrap(),
+            AccountType::Savings
+        );
+        assert_eq!(
+            "MONEYMRKT".parse::<AccountType>().unwrap(),
+            AccountType::MoneyMarket
+        );
+        assert_eq!(
+            "CREDITLINE".parse::<AccountType>().unwrap(),
+            AccountType::CreditLine
+        );
     }
 
     #[test]

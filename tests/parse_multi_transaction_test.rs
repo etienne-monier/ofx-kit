@@ -75,7 +75,9 @@ fn parse_multi_transaction_statement() {
     );
 
     // Ledger balance
-    let ledger = stmt.ledger_balance().expect("ledger balance should be present");
+    let ledger = stmt
+        .ledger_balance()
+        .expect("ledger balance should be present");
     assert_eq!(
         ledger.amount().as_decimal(),
         rust_decimal::Decimal::new(330433, 2)

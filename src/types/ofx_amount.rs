@@ -47,7 +47,10 @@ impl fmt::Display for InvalidOfxAmount {
         match self {
             Self::Empty => f.write_str("amount cannot be empty"),
             Self::TooLong { length } => {
-                write!(f, "amount exceeds maximum length of 32 characters: {length}")
+                write!(
+                    f,
+                    "amount exceeds maximum length of 32 characters: {length}"
+                )
             }
             Self::NotANumber { value } => {
                 write!(f, "amount is not a valid number: '{value}'")
@@ -82,10 +85,9 @@ impl FromStr for OfxAmount {
         } else {
             trimmed
         };
-        let decimal =
-            Decimal::from_str(parse_str).map_err(|_| InvalidOfxAmount::NotANumber {
-                value: trimmed.to_owned(),
-            })?;
+        let decimal = Decimal::from_str(parse_str).map_err(|_| InvalidOfxAmount::NotANumber {
+            value: trimmed.to_owned(),
+        })?;
         Ok(Self(decimal))
     }
 }

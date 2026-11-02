@@ -106,10 +106,7 @@ mod tests {
     #[test]
     fn parse_lowercase_returns_error() {
         let err = "usd".parse::<CurrencyCode>().unwrap_err();
-        assert!(matches!(
-            err,
-            InvalidCurrencyCode::InvalidCharacter { .. }
-        ));
+        assert!(matches!(err, InvalidCurrencyCode::InvalidCharacter { .. }));
     }
 
     #[test]

@@ -17,21 +17,27 @@ fn parse_bank_statement_from_fixture() {
     assert_eq!(doc.signon().fi_id(), Some("1234"));
 
     // Banking
-    let banking = doc.banking().expect("banking message set should be present");
+    let banking = doc
+        .banking()
+        .expect("banking message set should be present");
     assert_eq!(banking.statement_responses().len(), 1);
 
     let wrapper = &banking.statement_responses()[0];
     assert!(wrapper.status().is_success());
     assert_eq!(wrapper.transaction_uid(), "1001");
 
-    let stmt = wrapper.response().expect("statement response should be present");
+    let stmt = wrapper
+        .response()
+        .expect("statement response should be present");
     assert_eq!(stmt.currency_default().as_str(), "USD");
     assert_eq!(stmt.bank_account().bank_id().as_str(), "123456789");
     assert_eq!(stmt.bank_account().account_id().as_str(), "987654321");
     assert_eq!(stmt.bank_account().account_type(), AccountType::Checking);
 
     // Transaction list
-    let txn_list = stmt.transaction_list().expect("transaction list should be present");
+    let txn_list = stmt
+        .transaction_list()
+        .expect("transaction list should be present");
     assert_eq!(txn_list.len(), 1);
 
     let txn = &txn_list.transactions()[0];
@@ -42,7 +48,9 @@ fn parse_bank_statement_from_fixture() {
     assert!(txn.amount().is_negative());
 
     // Ledger balance
-    let ledger = stmt.ledger_balance().expect("ledger balance should be present");
+    let ledger = stmt
+        .ledger_balance()
+        .expect("ledger balance should be present");
     assert_eq!(
         ledger.amount().as_decimal(),
         rust_decimal::Decimal::new(150000, 2)
@@ -65,18 +73,27 @@ fn parse_credit_card_statement_from_fixture() {
     assert!(doc.banking().is_none());
 
     // Credit card section
-    let cc = doc.credit_card().expect("credit card message set should be present");
+    let cc = doc
+        .credit_card()
+        .expect("credit card message set should be present");
     assert_eq!(cc.statement_responses().len(), 1);
 
     let wrapper = &cc.statement_responses()[0];
     assert!(wrapper.status().is_success());
     assert_eq!(wrapper.transaction_uid(), "2001");
 
-    let stmt = wrapper.response().expect("cc statement response should be present");
+    let stmt = wrapper
+        .response()
+        .expect("cc statement response should be present");
     assert_eq!(stmt.currency_default().as_str(), "USD");
-    assert_eq!(stmt.credit_card_account().account_id().as_str(), "4111111111111111");
+    assert_eq!(
+        stmt.credit_card_account().account_id().as_str(),
+        "4111111111111111"
+    );
 
-    let txn_list = stmt.transaction_list().expect("transaction list should be present");
+    let txn_list = stmt
+        .transaction_list()
+        .expect("transaction list should be present");
     assert_eq!(txn_list.len(), 1);
 
     let txn = &txn_list.transactions()[0];
@@ -85,7 +102,9 @@ fn parse_credit_card_statement_from_fixture() {
     assert_eq!(txn.memo(), Some("Monthly subscription"));
 
     // Ledger balance should be negative (credit card)
-    let ledger = stmt.ledger_balance().expect("ledger balance should be present");
+    let ledger = stmt
+        .ledger_balance()
+        .expect("ledger balance should be present");
     assert!(ledger.amount().is_negative());
 }
 

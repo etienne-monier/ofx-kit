@@ -65,10 +65,11 @@ pub fn parse_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
             .map_or(Err(HeaderError::Missing), |ofx_start| {
                 // Check if there is a PI before the OFX tag
                 let before_ofx = &trimmed[..ofx_start];
-                before_ofx.find("<?OFX").map_or(
-                    Err(HeaderError::Missing),
-                    |pi_start| parse_xml_pi_header(&trimmed[pi_start..]),
-                )
+                before_ofx
+                    .find("<?OFX")
+                    .map_or(Err(HeaderError::Missing), |pi_start| {
+                        parse_xml_pi_header(&trimmed[pi_start..])
+                    })
             })
     }
 }
@@ -96,9 +97,11 @@ fn parse_xml_pi_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let old_uid = extract_pi_attribute(pi_content, "OLDFILEUID").unwrap_or("NONE");
     let new_uid = extract_pi_attribute(pi_content, "NEWFILEUID").unwrap_or("NONE");
 
-    let version: OfxVersion = version_str.parse().map_err(|_| HeaderError::InvalidVersion {
-        value: version_str.to_owned(),
-    })?;
+    let version: OfxVersion = version_str
+        .parse()
+        .map_err(|_| HeaderError::InvalidVersion {
+            value: version_str.to_owned(),
+        })?;
     let security: SecurityLevel =
         security_str
             .parse()
@@ -158,9 +161,12 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
 
     // Find where the header ends and the body begins.
     // The body starts with '<' (the start of the OFX XML/SGML block).
-    let body_start = input.find('<').ok_or_else(|| HeaderError::MalformedProcessingInstruction {
-        detail: "no XML/SGML body found after SGML header".to_owned(),
-    })?;
+    let body_start =
+        input
+            .find('<')
+            .ok_or_else(|| HeaderError::MalformedProcessingInstruction {
+                detail: "no XML/SGML body found after SGML header".to_owned(),
+            })?;
 
     let header_section = &input[..body_start];
     let remainder = &input[body_start..];
@@ -188,9 +194,11 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
         attribute: "SECURITY",
     })?;
 
-    let version: OfxVersion = version_raw.parse().map_err(|_| HeaderError::InvalidVersion {
-        value: version_raw.to_owned(),
-    })?;
+    let version: OfxVersion = version_raw
+        .parse()
+        .map_err(|_| HeaderError::InvalidVersion {
+            value: version_raw.to_owned(),
+        })?;
     let security: SecurityLevel =
         security_raw
             .parse()
@@ -315,9 +323,6 @@ mod tests {
     fn remainder_is_correct() {
         let input = r#"<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?><OFX><SIGNONMSGSRSV1></SIGNONMSGSRSV1></OFX>"#;
         let (_, body) = parse_header(input).unwrap();
-        assert_eq!(
-            body,
-            "<OFX><SIGNONMSGSRSV1></SIGNONMSGSRSV1></OFX>"
-        );
+        assert_eq!(body, "<OFX><SIGNONMSGSRSV1></SIGNONMSGSRSV1></OFX>");
     }
 }

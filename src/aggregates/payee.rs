@@ -92,7 +92,6 @@ impl Payee {
         &self.postal_code
     }
 
-
     #[must_use]
     pub fn country(&self) -> Option<&str> {
         self.country.as_deref()
@@ -102,5 +101,4 @@ impl Payee {
     pub fn phone(&self) -> &str {
         &self.phone
     }
-
 }

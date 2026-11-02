@@ -14,20 +14,28 @@ fn parse_mercury_checking_fixture() {
     assert!(doc.signon().status().is_success());
 
     // Banking
-    let banking = doc.banking().expect("banking message set should be present");
+    let banking = doc
+        .banking()
+        .expect("banking message set should be present");
     let wrapper = &banking.statement_responses()[0];
     assert!(wrapper.status().is_success());
 
-    let stmt = wrapper.response().expect("statement response should be present");
+    let stmt = wrapper
+        .response()
+        .expect("statement response should be present");
     assert_eq!(stmt.currency_default().as_str(), "USD");
     assert_eq!(stmt.bank_account().account_id().as_str(), "202497494038");
 
     // Should have 674 transactions
-    let txn_list = stmt.transaction_list().expect("transaction list should be present");
+    let txn_list = stmt
+        .transaction_list()
+        .expect("transaction list should be present");
     assert_eq!(txn_list.len(), 674);
 
     // Ledger balance
-    let ledger = stmt.ledger_balance().expect("ledger balance should be present");
+    let ledger = stmt
+        .ledger_balance()
+        .expect("ledger balance should be present");
     assert_eq!(
         ledger.amount().as_decimal(),
         rust_decimal::Decimal::new(114986, 2)

@@ -5,7 +5,11 @@ fn try_parse(name: &str, input: &str) {
         Ok(doc) => {
             let signon = doc.signon();
             println!("  [OK] {name}");
-            println!("       signon status: code={}, severity={}", signon.status().code(), signon.status().severity());
+            println!(
+                "       signon status: code={}, severity={}",
+                signon.status().code(),
+                signon.status().severity()
+            );
             println!("       language: {}", signon.language());
             if let Some(org) = signon.fi_org() {
                 println!("       FI org: {org}");
@@ -13,19 +17,29 @@ fn try_parse(name: &str, input: &str) {
 
             if let Some(banking) = doc.banking() {
                 for (i, wrapper) in banking.statement_responses().iter().enumerate() {
-                    println!("       bank stmt #{i}: trnuid={}, status={}", wrapper.transaction_uid(), wrapper.status().code());
+                    println!(
+                        "       bank stmt #{i}: trnuid={}, status={}",
+                        wrapper.transaction_uid(),
+                        wrapper.status().code()
+                    );
                     if let Some(stmt) = wrapper.response() {
                         println!("         currency: {}", stmt.currency_default().as_str());
-                        println!("         account: bank_id={}, acct_id={}, type={}",
+                        println!(
+                            "         account: bank_id={}, acct_id={}, type={}",
                             stmt.bank_account().bank_id().as_str(),
                             stmt.bank_account().account_id().as_str(),
-                            stmt.bank_account().account_type());
+                            stmt.bank_account().account_type()
+                        );
                         if let Some(tl) = stmt.transaction_list() {
                             println!("         transactions: {}", tl.len());
                             for (j, txn) in tl.transactions().iter().enumerate() {
-                                println!("           [{j}] type={} amount={} fitid={} name={:?}",
-                                    txn.transaction_type(), txn.amount(), txn.fit_id().as_str(),
-                                    txn.name().unwrap_or("(none)"));
+                                println!(
+                                    "           [{j}] type={} amount={} fitid={} name={:?}",
+                                    txn.transaction_type(),
+                                    txn.amount(),
+                                    txn.fit_id().as_str(),
+                                    txn.name().unwrap_or("(none)")
+                                );
                             }
                         }
                         if let Some(lb) = stmt.ledger_balance() {
@@ -43,10 +57,17 @@ fn try_parse(name: &str, input: &str) {
 
             if let Some(cc) = doc.credit_card() {
                 for (i, wrapper) in cc.statement_responses().iter().enumerate() {
-                    println!("       cc stmt #{i}: trnuid={}, status={}", wrapper.transaction_uid(), wrapper.status().code());
+                    println!(
+                        "       cc stmt #{i}: trnuid={}, status={}",
+                        wrapper.transaction_uid(),
+                        wrapper.status().code()
+                    );
                     if let Some(stmt) = wrapper.response() {
                         println!("         currency: {}", stmt.currency_default().as_str());
-                        println!("         account: {}", stmt.credit_card_account().account_id().as_str());
+                        println!(
+                            "         account: {}",
+                            stmt.credit_card_account().account_id().as_str()
+                        );
                         if let Some(tl) = stmt.transaction_list() {
                             println!("         transactions: {}", tl.len());
                         }
@@ -77,10 +98,16 @@ fn parse_all_test_vectors() {
     try_parse("stmtrs_euro.ofx", include_str!("fixtures/stmtrs_euro.ofx"));
     println!();
 
-    try_parse("mercury-checking.ofx", include_str!("fixtures/mercury-checking.ofx"));
+    try_parse(
+        "mercury-checking.ofx",
+        include_str!("fixtures/mercury-checking.ofx"),
+    );
     println!();
 
-    try_parse("br_nubank_cc.ofx", include_str!("fixtures/br_nubank_cc.ofx"));
+    try_parse(
+        "br_nubank_cc.ofx",
+        include_str!("fixtures/br_nubank_cc.ofx"),
+    );
     println!();
 
     try_parse("invstmtrs.ofx", include_str!("fixtures/invstmtrs.ofx"));

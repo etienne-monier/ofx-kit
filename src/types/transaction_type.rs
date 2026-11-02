@@ -140,7 +140,11 @@ mod tests {
             ("OTHER", TransactionType::Other),
         ];
         for (s, expected) in cases {
-            assert_eq!(s.parse::<TransactionType>().unwrap(), expected, "failed for {s}");
+            assert_eq!(
+                s.parse::<TransactionType>().unwrap(),
+                expected,
+                "failed for {s}"
+            );
         }
     }
 

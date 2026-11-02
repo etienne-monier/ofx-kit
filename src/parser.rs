@@ -54,10 +54,7 @@ fn read_text(reader: &mut OfxReader<'_>, tag: &str) -> Result<String, XmlError> 
 
 /// Read a required text element by name inside an aggregate being walked.
 /// This is for use when we've already received a Start event for `tag`.
-fn parse_text_as<T: core::str::FromStr>(
-    text: &str,
-    element: &str,
-) -> Result<T, XmlError> {
+fn parse_text_as<T: core::str::FromStr>(text: &str, element: &str) -> Result<T, XmlError> {
     text.parse::<T>().map_err(|_| XmlError::InvalidContent {
         element: element.to_owned(),
         value: text.to_owned(),
@@ -465,9 +462,7 @@ fn parse_stmtrs(reader: &mut OfxReader<'_>) -> Result<StatementResponse, OfxErro
 // Bank transaction list (BANKTRANLIST) -- contains multiple STMTTRN
 // ---------------------------------------------------------------------------
 
-fn parse_bank_transaction_list(
-    reader: &mut OfxReader<'_>,
-) -> Result<TransactionList, OfxError> {
+fn parse_bank_transaction_list(reader: &mut OfxReader<'_>) -> Result<TransactionList, OfxError> {
     let mut dtstart: Option<crate::types::OfxDateTime> = None;
     let mut dtend: Option<crate::types::OfxDateTime> = None;
     let mut transactions = Vec::new();
@@ -531,7 +526,9 @@ fn apply_stmttrn_field(
         "TRNAMT" => builder.amount(parse_text_as(&read_text(reader, name)?, name)?),
         "FITID" => builder.fit_id(parse_text_as(&read_text(reader, name)?, name)?),
         "CORRECTFITID" => builder.correction_id(parse_text_as(&read_text(reader, name)?, name)?),
-        "CORRECTACTION" => builder.correction_action(parse_text_as(&read_text(reader, name)?, name)?),
+        "CORRECTACTION" => {
+            builder.correction_action(parse_text_as(&read_text(reader, name)?, name)?)
+        }
         "SRVRTID" => builder.server_transaction_id(parse_text_as(&read_text(reader, name)?, name)?),
         "CHECKNUM" => builder.check_number(parse_text_as(&read_text(reader, name)?, name)?),
         "REFNUM" => builder.reference_number(read_text(reader, name)?),

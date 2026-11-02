@@ -42,10 +42,7 @@ impl fmt::Display for XmlError {
                 value,
                 reason,
             } => {
-                write!(
-                    f,
-                    "invalid content in <{element}>: '{value}' ({reason})"
-                )
+                write!(f, "invalid content in <{element}>: '{value}' ({reason})")
             }
         }
     }
