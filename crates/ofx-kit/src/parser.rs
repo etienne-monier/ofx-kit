@@ -41,6 +41,13 @@ pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
         return Err(OfxError::UnsupportedCompression);
     }
     let decoded = crate::encoding::decode(input);
+    let (header, _) = header::parse_header(&decoded.text)?;
+    if header
+        .compression()
+        .is_some_and(|compression| !compression.eq_ignore_ascii_case("NONE"))
+    {
+        return Err(OfxError::UnsupportedCompression);
+    }
     parse(&decoded.text)
 }
 
