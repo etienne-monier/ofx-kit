@@ -28,6 +28,7 @@
 //! ```
 
 pub mod aggregates;
+pub mod conversion;
 pub mod diagnostics;
 pub mod document;
 pub mod encoding;
@@ -39,6 +40,10 @@ mod sgml;
 pub mod types;
 pub mod xml;
 
+pub use conversion::{
+    ConversionError, ConversionOptions, ConversionWarning, ConvertedSource, convert_bytes,
+    convert_str,
+};
 pub use diagnostics::{ElementPath, ParseWarning};
 pub use document::OfxDocument;
 pub use encoding::{DecodeWarning, DecodedSource, DetectedEncoding, decode};

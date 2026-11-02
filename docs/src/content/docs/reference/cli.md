@@ -11,6 +11,9 @@ ofx inspect statement.ofx --json
 ofx validate statement.ofx
 ofx validate statement.ofx --json
 ofx decode statement.ofx
+ofx convert statement.ofx
+ofx convert statement.ofx -o statement.xml --pretty
+ofx convert statement.ofx --to 220 --check
 ```
 
 `inspect` displays the format, version, encoding warnings, signon status,
@@ -22,6 +25,14 @@ to each statement and `--account` matches `ACCTID` exactly.
 reported but does not make an otherwise well-formed file invalid.
 
 `decode` writes decoded UTF-8 content to stdout and warnings to stderr.
+
+`convert` performs a structural SGML 1.x to XML conversion. It preserves
+unknown elements and does not serialize through the typed document model. Use
+`-o` to write a file, `--pretty` for indentation, and `--check` to validate
+without writing output. `--to` changes only the VERSION metadata in the
+generated header; it does not perform a semantic OFX migration.
+Warnings for discarded legacy header metadata and ambiguous unknown elements
+are written to standard error while the XML remains on standard output.
 
 ## JSON output
 

@@ -13,6 +13,7 @@ fn help_is_available() {
     assert!(help.contains("inspect"));
     assert!(help.contains("validate"));
     assert!(help.contains("decode"));
+    assert!(help.contains("convert"));
 }
 
 #[test]

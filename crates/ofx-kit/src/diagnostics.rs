@@ -108,6 +108,9 @@ pub enum ParseWarning {
     UnmatchedCloseTag { name: String, path: ElementPath },
     /// An element was still open at the end of the input and was closed implicitly.
     UnclosedElement { name: String, path: ElementPath },
+    /// An unknown element contains text before a nested element, making its
+    /// SGML leaf/aggregate interpretation ambiguous.
+    AmbiguousUnknownElement { name: String, path: ElementPath },
     /// A raw `&` was found in text and escaped as `&amp;`.
     RawAmpersand { path: ElementPath },
     /// A named entity that is not valid XML was escaped as literal text.
@@ -130,6 +133,9 @@ impl fmt::Display for ParseWarning {
             }
             Self::UnclosedElement { name, path } => {
                 write!(f, "unclosed element <{name}> at {path}")
+            }
+            Self::AmbiguousUnknownElement { name, path } => {
+                write!(f, "ambiguous unknown element <{name}> at {path}")
             }
             Self::RawAmpersand { path } => {
                 write!(f, "raw ampersand escaped at {path}")

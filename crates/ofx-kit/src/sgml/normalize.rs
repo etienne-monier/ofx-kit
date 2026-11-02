@@ -247,6 +247,12 @@ fn handle_open_tag(
         None => {
             // Unknown elements are left where they are. If they contain child
             // elements they are only closed explicitly or at end of input.
+            if unknown_is_ambiguous(tokens, index) {
+                warnings.push(ParseWarning::AmbiguousUnknownElement {
+                    name: name.to_owned(),
+                    path: path.child(name),
+                });
+            }
         }
     }
 
@@ -360,6 +366,23 @@ fn looks_like_leaf(tokens: &[Token<'_>], index: usize) -> bool {
         }
     }
     true
+}
+
+fn unknown_is_ambiguous(tokens: &[Token<'_>], index: usize) -> bool {
+    let mut text_seen = false;
+    for token in &tokens[index + 1..] {
+        match token {
+            Token::Text { text, .. } => text_seen |= !text.trim().is_empty(),
+            Token::OpenTag { .. } if text_seen => return true,
+            Token::CloseTag { .. } => return false,
+            Token::Entity { .. } | Token::Malformed { .. } => text_seen = true,
+            Token::Comment { .. }
+            | Token::ProcessingInstruction { .. }
+            | Token::Declaration { .. }
+            | Token::OpenTag { .. } => {}
+        }
+    }
+    false
 }
 
 fn close_remaining(stack: &mut Vec<Frame>, output: &mut String, warnings: &mut Vec<ParseWarning>) {

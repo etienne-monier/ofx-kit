@@ -6,9 +6,12 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use ofx_kit::document::OfxDocument;
+use ofx_kit::header::OfxVersion;
 use ofx_kit::header::parse_header;
 use ofx_kit::xml::{XmlError, XmlErrorKind};
-use ofx_kit::{DecodeWarning, ElementPath, OfxError, decode, parse_bytes};
+use ofx_kit::{
+    ConversionOptions, DecodeWarning, ElementPath, OfxError, convert_bytes, decode, parse_bytes,
+};
 use serde::Serialize;
 use time::Date;
 use time::format_description::well_known::Rfc3339;
@@ -40,6 +43,8 @@ enum Command {
     Validate(ValidateArgs),
     /// Decode an OFX file to UTF-8 and write it to standard output.
     Decode(InputArgs),
+    /// Convert an OFX 1.x SGML file to XML.
+    Convert(ConvertArgs),
 }
 
 #[derive(Debug, Args)]
@@ -47,6 +52,25 @@ struct InputArgs {
     /// Path to the OFX file to decode.
     #[arg(value_name = "FILE")]
     file: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct ConvertArgs {
+    /// Path to the OFX file to convert.
+    #[arg(value_name = "FILE")]
+    file: PathBuf,
+    /// Write the converted XML to this file instead of standard output.
+    #[arg(short, long, value_name = "FILE", conflicts_with = "check")]
+    output: Option<PathBuf>,
+    /// Replace only the VERSION metadata in the generated header.
+    #[arg(long, value_name = "VERSION", value_parser = parse_version)]
+    to: Option<OfxVersion>,
+    /// Indent the generated XML.
+    #[arg(long)]
+    pretty: bool,
+    /// Validate the conversion without writing output.
+    #[arg(long)]
+    check: bool,
 }
 
 #[derive(Debug, Args)]
@@ -92,6 +116,12 @@ fn parse_date(value: &str) -> Result<Date, String> {
         &time::format_description::well_known::Iso8601::DEFAULT,
     )
     .map_err(|_| format!("invalid date '{value}', expected YYYY-MM-DD"))
+}
+
+fn parse_version(value: &str) -> Result<OfxVersion, String> {
+    value
+        .parse()
+        .map_err(|error| format!("invalid OFX version '{value}': {error}"))
 }
 
 struct Loaded {
@@ -766,12 +796,62 @@ fn decode_command(args: InputArgs) -> u8 {
     0
 }
 
+fn convert_command(args: ConvertArgs) -> u8 {
+    let bytes = match std::fs::read(&args.file) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("{}: {error}", args.file.display());
+            return 1;
+        }
+    };
+    let result = match convert_bytes(
+        &bytes,
+        &ConversionOptions {
+            target_version: args.to,
+            pretty: args.pretty,
+        },
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("{}: {error}", args.file.display());
+            return 1;
+        }
+    };
+
+    for warning in &result.decode_warnings {
+        eprintln!("warning: {}", warning_json(warning).message);
+    }
+    for warning in &result.warnings {
+        eprintln!("warning: {warning}");
+    }
+    if args.check {
+        return 0;
+    }
+
+    if let Some(output) = args.output {
+        if let Err(error) = std::fs::write(&output, result.xml.as_bytes()) {
+            eprintln!("{}: {error}", output.display());
+            return 1;
+        }
+        return 0;
+    }
+
+    if let Err(error) = io::stdout().write_all(result.xml.as_bytes())
+        && error.kind() != io::ErrorKind::BrokenPipe
+    {
+        eprintln!("{error}");
+        return 1;
+    }
+    0
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Inspect(args) => inspect(args, cli.no_color),
         Command::Validate(args) => validate(args, cli.no_color),
         Command::Decode(args) => decode_command(args),
+        Command::Convert(args) => convert_command(args),
     };
     ExitCode::from(code)
 }

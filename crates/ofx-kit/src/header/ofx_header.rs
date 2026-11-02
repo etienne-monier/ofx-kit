@@ -16,6 +16,7 @@ pub struct OfxHeader {
     encoding: Option<String>,
     charset: Option<String>,
     compression: Option<String>,
+    unknown_fields: Vec<(String, String)>,
 }
 
 impl OfxHeader {
@@ -59,6 +60,12 @@ impl OfxHeader {
     #[must_use]
     pub fn compression(&self) -> Option<&str> {
         self.compression.as_deref()
+    }
+
+    /// Returns legacy header fields that are not interpreted by the parser.
+    #[must_use]
+    pub fn unknown_fields(&self) -> &[(String, String)] {
+        &self.unknown_fields
     }
 }
 
@@ -150,6 +157,7 @@ fn parse_xml_pi_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
             encoding,
             charset: None,
             compression: None,
+            unknown_fields: Vec::new(),
         },
         remainder,
     ))
@@ -196,6 +204,7 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let mut encoding = None;
     let mut charset = None;
     let mut compression = None;
+    let mut unknown_fields = Vec::new();
 
     // Find where the header ends and the body begins.
     // The body starts with '<' (the start of the OFX XML/SGML block).
@@ -223,7 +232,7 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
                 "ENCODING" => encoding = Some(value.trim().to_owned()),
                 "CHARSET" => charset = Some(value.trim().to_owned()),
                 "COMPRESSION" => compression = Some(value.trim().to_owned()),
-                _ => {} // Ignore unknown header fields (DATA, ENCODING, CHARSET, COMPRESSION, OFXHEADER)
+                _ => unknown_fields.push((key.trim().to_owned(), value.trim().to_owned())),
             }
         }
     }
@@ -256,6 +265,7 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
             encoding,
             charset,
             compression,
+            unknown_fields,
         },
         remainder,
     ))
