@@ -14,9 +14,14 @@ keywords = ["ofx", "finance", "banking", "parser", "sgml"]
 categories = ["finance", "parser-implementations"]
 
 [dependencies]
+encoding_rs = { version = "0.8", optional = true }
 quick-xml = "0.41.0"
 rust_decimal = "1.40.0"
 time = "0.3.47"
+
+[features]
+default = ["encoding"]
+encoding = ["dep:encoding_rs"]
 
 [dev-dependencies]
 proptest = "1.10.0"

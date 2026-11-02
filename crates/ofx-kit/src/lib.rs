@@ -29,6 +29,7 @@
 
 pub mod aggregates;
 pub mod document;
+pub mod encoding;
 pub mod error;
 pub mod header;
 mod parser;
@@ -37,5 +38,6 @@ pub mod types;
 pub mod xml;
 
 pub use document::OfxDocument;
+pub use encoding::{DecodeWarning, DecodedSource, DetectedEncoding, decode};
 pub use error::OfxError;
-pub use parser::parse;
+pub use parser::{parse, parse_bytes};

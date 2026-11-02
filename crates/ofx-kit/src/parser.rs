@@ -35,6 +35,15 @@ pub fn parse(input: &str) -> Result<OfxDocument, OfxError> {
     }
 }
 
+/// Decodes and parses an OFX document from raw bytes.
+pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
+    if crate::encoding::is_compressed(input) {
+        return Err(OfxError::UnsupportedCompression);
+    }
+    let decoded = crate::encoding::decode(input);
+    parse(&decoded.text)
+}
+
 // ---------------------------------------------------------------------------
 // Tag name helpers -- compare against byte slices to avoid allocations
 // ---------------------------------------------------------------------------

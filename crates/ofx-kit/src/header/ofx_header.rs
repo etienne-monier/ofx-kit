@@ -13,6 +13,9 @@ pub struct OfxHeader {
     security: SecurityLevel,
     old_file_uid: String,
     new_file_uid: String,
+    encoding: Option<String>,
+    charset: Option<String>,
+    compression: Option<String>,
 }
 
 impl OfxHeader {
@@ -38,6 +41,24 @@ impl OfxHeader {
     #[must_use]
     pub fn new_file_uid(&self) -> &str {
         &self.new_file_uid
+    }
+
+    /// Returns the encoding declared by the source header, if present.
+    #[must_use]
+    pub fn encoding(&self) -> Option<&str> {
+        self.encoding.as_deref()
+    }
+
+    /// Returns the legacy character set declaration, if present.
+    #[must_use]
+    pub fn charset(&self) -> Option<&str> {
+        self.charset.as_deref()
+    }
+
+    /// Returns the compression declaration, if present.
+    #[must_use]
+    pub fn compression(&self) -> Option<&str> {
+        self.compression.as_deref()
     }
 }
 
@@ -68,10 +89,20 @@ pub fn parse_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
                 before_ofx
                     .find("<?OFX")
                     .map_or(Err(HeaderError::Missing), |pi_start| {
-                        parse_xml_pi_header(&trimmed[pi_start..])
+                        let (mut header, body) = parse_xml_pi_header(&trimmed[pi_start..])?;
+                        if header.encoding.is_none() {
+                            header.encoding = extract_xml_declaration_encoding(before_ofx);
+                        }
+                        Ok((header, body))
                     })
             })
     }
+}
+
+fn extract_xml_declaration_encoding(input: &str) -> Option<String> {
+    let declaration_end = input.find("?>")?;
+    let declaration = &input[..declaration_end];
+    extract_pi_attribute(declaration, "encoding").map(str::to_owned)
 }
 
 /// Parse the XML processing instruction format:
@@ -96,6 +127,7 @@ fn parse_xml_pi_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
         })?;
     let old_uid = extract_pi_attribute(pi_content, "OLDFILEUID").unwrap_or("NONE");
     let new_uid = extract_pi_attribute(pi_content, "NEWFILEUID").unwrap_or("NONE");
+    let encoding = extract_pi_attribute(pi_content, "ENCODING").map(str::to_owned);
 
     let version: OfxVersion = version_str
         .parse()
@@ -115,6 +147,9 @@ fn parse_xml_pi_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
             security,
             old_file_uid: old_uid.to_owned(),
             new_file_uid: new_uid.to_owned(),
+            encoding,
+            charset: None,
+            compression: None,
         },
         remainder,
     ))
@@ -158,6 +193,9 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let mut security_str: Option<&str> = None;
     let mut old_uid = "NONE";
     let mut new_uid = "NONE";
+    let mut encoding = None;
+    let mut charset = None;
+    let mut compression = None;
 
     // Find where the header ends and the body begins.
     // The body starts with '<' (the start of the OFX XML/SGML block).
@@ -182,6 +220,9 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
                 "SECURITY" => security_str = Some(value.trim()),
                 "OLDFILEUID" => old_uid = value.trim(),
                 "NEWFILEUID" => new_uid = value.trim(),
+                "ENCODING" => encoding = Some(value.trim().to_owned()),
+                "CHARSET" => charset = Some(value.trim().to_owned()),
+                "COMPRESSION" => compression = Some(value.trim().to_owned()),
                 _ => {} // Ignore unknown header fields (DATA, ENCODING, CHARSET, COMPRESSION, OFXHEADER)
             }
         }
@@ -212,6 +253,9 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
             security,
             old_file_uid: old_uid.to_owned(),
             new_file_uid: new_uid.to_owned(),
+            encoding,
+            charset,
+            compression,
         },
         remainder,
     ))
@@ -309,6 +353,7 @@ mod tests {
         let (header, body) = parse_header(input).unwrap();
         assert_eq!(header.version(), "220".parse().unwrap());
         assert!(body.trim().starts_with("<OFX>"));
+        assert_eq!(header.encoding(), Some("UTF-8"));
     }
 
     #[test]
