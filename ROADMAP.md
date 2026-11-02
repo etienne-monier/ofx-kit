@@ -54,6 +54,8 @@ The future implementation must keep two paths separate:
 
 ### 0. Rename and foundations
 
+**Status: completed.**
+
 - Rename the library package and imports from `ofx-rs` / `ofx_rs` to
   `ofx-kit` / `ofx_kit`.
 - Add a Cargo workspace member `crates/ofx-cli` with package `ofx-kit-cli` and

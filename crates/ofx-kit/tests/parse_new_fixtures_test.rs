@@ -1,4 +1,4 @@
-use ofx_rs::parse;
+use ofx_kit::parse;
 
 #[test]
 fn parse_mercury_checking_fixture() {

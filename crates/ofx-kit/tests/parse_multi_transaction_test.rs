@@ -1,5 +1,5 @@
-use ofx_rs::parse;
-use ofx_rs::types::{BalanceType, TransactionType};
+use ofx_kit::parse;
+use ofx_kit::types::{BalanceType, TransactionType};
 
 #[test]
 fn parse_multi_transaction_statement() {
@@ -71,7 +71,7 @@ fn parse_multi_transaction_statement() {
     assert_eq!(txn5.correction_id().unwrap().as_str(), "MTX003");
     assert_eq!(
         txn5.correction_action().unwrap(),
-        ofx_rs::types::CorrectionAction::Replace
+        ofx_kit::types::CorrectionAction::Replace
     );
 
     // Ledger balance

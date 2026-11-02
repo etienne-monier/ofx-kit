@@ -1,4 +1,4 @@
-use ofx_rs::parse;
+use ofx_kit::parse;
 
 fn try_parse(name: &str, input: &str) {
     match parse(input) {

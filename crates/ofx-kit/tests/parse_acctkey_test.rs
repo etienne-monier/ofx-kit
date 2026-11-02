@@ -6,8 +6,8 @@
 //! tag stack up to `</OFX>` — dropping `BANKTRANLIST` outside the document,
 //! so the statement parsed successfully but with no transaction list.
 
-use ofx_rs::parse;
-use ofx_rs::types::{AccountType, TransactionType};
+use ofx_kit::parse;
+use ofx_kit::types::{AccountType, TransactionType};
 
 const INPUT: &str = "\
 OFXHEADER:100

@@ -1,4 +1,4 @@
-use ofx_rs::parse;
+use ofx_kit::parse;
 
 #[test]
 fn parse_investment_statement_from_fixture() {
@@ -49,7 +49,7 @@ fn parse_investment_statement_from_fixture() {
     );
     assert_eq!(
         txn.transaction_type(),
-        ofx_rs::types::TransactionType::Credit
+        ofx_kit::types::TransactionType::Credit
     );
     assert_eq!(txn.name(), Some("Customer deposit"));
     assert_eq!(txn.memo(), Some("Your check #1034"));

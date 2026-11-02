@@ -2,7 +2,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-//! `ofx-rs` -- A Rust library for parsing Open Financial Exchange (OFX) documents.
+//! `ofx-kit` -- A Rust library for parsing Open Financial Exchange (OFX) documents.
 //!
 //! This library provides a pure functional parser for OFX 1.x and 2.x documents.
 //! It takes string input and produces typed data structures with no I/O.
@@ -10,7 +10,7 @@
 //! # Usage
 //!
 //! ```
-//! use ofx_rs::parse;
+//! use ofx_kit::parse;
 //!
 //! let ofx_content = r#"<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
 //! <OFX>

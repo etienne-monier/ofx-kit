@@ -3,8 +3,7 @@
 ## Project
 
 `ofx-kit` is a pure Rust parser for OFX 1.x (SGML) and OFX 2.x (XML). The
-current package name is still `ofx-rs` and the import path is `ofx_rs`; a
-rename to `ofx-kit` / `ofx_kit` is planned. Do not assume the rename is done.
+library package is `ofx-kit` and the import path is `ofx_kit`.
 
 The supported product scope is bank statements, plus the existing credit-card
 and investment-statement support. Investment support currently extracts only
@@ -13,13 +12,13 @@ implementation.
 
 ## Commands
 
-- `cargo test --locked` — full test suite.
-- `cargo test --locked --test parse_statement_test` — one integration file.
-- `cargo test --locked parse_simple_bank_statement` — one test by name.
-- `cargo test --locked -- --nocapture` — show test-vector output.
+- `cargo test --workspace --locked` — full test suite.
+- `cargo test --workspace --locked --test parse_statement_test` — one integration file.
+- `cargo test --workspace --locked parse_simple_bank_statement` — one test by name.
+- `cargo test --workspace --locked -- --nocapture` — show test-vector output.
 - `cargo fmt --all -- --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked`
 - `cargo deny check` — configuration is in `deny.toml`.
 
 CI validates formatting, Clippy, tests, Rust 1.90 MSRV, public/private docs,
@@ -27,20 +26,20 @@ and cargo-deny. Run the relevant checks before claiming validation.
 
 ## Architecture
 
-- `src/lib.rs` re-exports `parse` from `src/parser.rs`.
+- `crates/ofx-kit/src/lib.rs` re-exports `parse` from `crates/ofx-kit/src/parser.rs`.
 - Parsing flows through `header::parse_header`, then normalizes OFX 1.x with
-  `src/sgml.rs`, and parses the resulting XML with `quick-xml` through
-  `src/xml/reader.rs`.
-- `src/parser.rs` is a hand-written aggregate parser. `src/aggregates/` holds
-  composite data, `src/types/` holds validated primitives/enums, and
-  `src/document/` holds top-level message sets.
+  `crates/ofx-kit/src/sgml.rs`, and parses the resulting XML with `quick-xml` through
+  `crates/ofx-kit/src/xml/reader.rs`.
+- `crates/ofx-kit/src/parser.rs` is a hand-written aggregate parser. `crates/ofx-kit/src/aggregates/` holds
+  composite data, `crates/ofx-kit/src/types/` holds validated primitives/enums, and
+  `crates/ofx-kit/src/document/` holds top-level message sets.
 - The library currently performs no I/O and accepts UTF-8 `&str` input only.
   Encoding support (`parse_bytes`) is planned; keep file I/O in the future CLI.
 
 ## SGML and data hazards
 
 - OFX 1.x omits closing tags. When adding an aggregate or leaf, update the
-  tables in `src/sgml.rs`: `aggregate_tags`, `is_valid_child`, and
+  tables in `crates/ofx-kit/src/sgml.rs`: `aggregate_tags`, `is_valid_child`, and
   `is_valid_leaf_parent`.
 - A wrong SGML relationship can close a parent early and drop an entire
   subtree. `ACCTKEY` inside `BANKACCTFROM` is a regression case.
@@ -53,12 +52,13 @@ and cargo-deny. Run the relevant checks before claiming validation.
 
 ## Code and tests
 
-- `src/lib.rs` forbids unsafe code and denies `unwrap`/`expect` in production;
+- `crates/ofx-kit/src/lib.rs` forbids unsafe code and denies `unwrap`/`expect` in production;
   use `?`, `ok_or`, and `ok_or_else`.
 - Error enums are `#[non_exhaustive]`; preserve `Display`, `Error`, and `From`
   implementations when extending them.
-- Unit tests live beside implementation; integration tests are in `tests/` and
-  use fixtures from `tests/fixtures/` via `include_str!`.
+- Unit tests live beside implementation; integration tests are in
+  `crates/ofx-kit/tests/` and use fixtures from `crates/ofx-kit/tests/fixtures/`
+  via `include_str!`.
 - `parse_test_vectors.rs` prints a fixture report only with `--nocapture`.
 - `proptest` is declared as a dev-dependency but is not currently used.
   There is no CLI, raw-byte encoding suite, or fuzzing yet.

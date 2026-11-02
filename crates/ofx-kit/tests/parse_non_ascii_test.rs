@@ -5,7 +5,7 @@
 //! out of `parse()` as mojibake (e.g. "CAFÉ LÉON" became "CAFÃ\u{89}
 //! LÃ\u{89}ON"). Text runs must be copied as-is.
 
-use ofx_rs::parse;
+use ofx_kit::parse;
 
 const INPUT: &str = "\
 OFXHEADER:100

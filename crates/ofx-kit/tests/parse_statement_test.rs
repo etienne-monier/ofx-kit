@@ -1,5 +1,5 @@
-use ofx_rs::parse;
-use ofx_rs::types::{AccountType, TransactionType};
+use ofx_kit::parse;
+use ofx_kit::types::{AccountType, TransactionType};
 
 #[test]
 fn parse_bank_statement_from_fixture() {
