@@ -5,6 +5,7 @@ use crate::aggregates::{
     InvStatementResponse, InvestmentAccount, LedgerBalance, Payee, StatementResponse,
     StatementTransactionBuilder, Status, TransactionList, TransactionWrapper,
 };
+use crate::diagnostics::ParseWarning;
 use crate::document::{
     BankingMessageSet, CreditCardMessageSet, InvestmentMessageSet, OfxDocument, SignonResponse,
 };
@@ -12,31 +13,68 @@ use crate::error::OfxError;
 use crate::header::{self, OfxHeader};
 use crate::xml::{OfxReader, XmlError};
 
+/// A parsed OFX document together with the non-fatal warnings collected while
+/// parsing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDocument {
+    /// The structured OFX document.
+    pub document: OfxDocument,
+    /// Non-fatal conditions encountered while parsing.
+    pub warnings: Vec<ParseWarning>,
+}
+
 /// Parses a complete OFX document from a string.
 ///
 /// This is the primary entry point for the library. It accepts the full
 /// content of an OFX file (header + XML body) and returns a structured document.
+///
+/// Warnings are discarded; use [`parse_with_warnings`] to receive them.
 ///
 /// # Errors
 ///
 /// Returns `OfxError` if the header is missing or malformed, the XML is invalid,
 /// or required OFX elements are missing.
 pub fn parse(input: &str) -> Result<OfxDocument, OfxError> {
+    parse_with_warnings(input).map(|parsed| parsed.document)
+}
+
+/// Parses a complete OFX document and returns the non-fatal warnings it
+/// generated.
+///
+/// # Errors
+///
+/// Returns `OfxError` if the header is missing or malformed, the XML is invalid,
+/// or required OFX elements are missing.
+pub fn parse_with_warnings(input: &str) -> Result<ParsedDocument, OfxError> {
     let (ofx_header, xml_body) = header::parse_header(input)?;
     let xml_body = xml_body.trim();
 
     // OFX 1.x uses SGML where closing tags are optional. We need to normalize
     // the body to well-formed XML before parsing.
     if ofx_header.version().major() < 2 {
-        let normalized = crate::sgml::normalize_sgml_to_xml(xml_body);
-        parse_ofx_body(&normalized, ofx_header)
+        let normalized = crate::sgml::normalize_sgml_to_xml_with_warnings(xml_body);
+        let (document, mut xml_warnings) = parse_ofx_body(&normalized.xml, ofx_header)?;
+        let mut warnings = normalized.warnings;
+        warnings.append(&mut xml_warnings);
+        Ok(ParsedDocument { document, warnings })
     } else {
-        parse_ofx_body(xml_body, ofx_header)
+        let (document, warnings) = parse_ofx_body(xml_body, ofx_header)?;
+        Ok(ParsedDocument { document, warnings })
     }
 }
 
 /// Decodes and parses an OFX document from raw bytes.
+///
+/// Warnings are discarded; use [`parse_bytes_with_warnings`] to receive them.
 pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
+    parse_bytes_with_warnings(input).map(|parsed| parsed.document)
+}
+
+/// Decodes and parses an OFX document from raw bytes, returning non-fatal
+/// warnings encountered while parsing.
+///
+/// Decoding warnings are available separately through [`crate::decode`].
+pub fn parse_bytes_with_warnings(input: &[u8]) -> Result<ParsedDocument, OfxError> {
     if crate::encoding::is_compressed(input) {
         return Err(OfxError::UnsupportedCompression);
     }
@@ -48,7 +86,7 @@ pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
     {
         return Err(OfxError::UnsupportedCompression);
     }
-    parse(&decoded.text)
+    parse_with_warnings(&decoded.text)
 }
 
 // ---------------------------------------------------------------------------
@@ -70,19 +108,37 @@ fn read_text(reader: &mut OfxReader<'_>, tag: &str) -> Result<String, XmlError> 
 
 /// Read a required text element by name inside an aggregate being walked.
 /// This is for use when we've already received a Start event for `tag`.
-fn parse_text_as<T: core::str::FromStr>(text: &str, element: &str) -> Result<T, XmlError> {
-    text.parse::<T>().map_err(|_| XmlError::InvalidContent {
-        element: element.to_owned(),
-        value: text.to_owned(),
-        reason: format!("failed to parse as {}", core::any::type_name::<T>()),
+fn parse_text_as<T: core::str::FromStr>(
+    reader: &OfxReader<'_>,
+    text: &str,
+    element: &str,
+) -> Result<T, XmlError> {
+    text.parse::<T>().map_err(|_| {
+        reader.invalid_content(
+            element,
+            text,
+            format!("failed to parse as {}", core::any::type_name::<T>()),
+        )
     })
+}
+
+/// Read the text of the current element and parse it into a typed value.
+fn parse_next_as<T: core::str::FromStr>(
+    reader: &mut OfxReader<'_>,
+    element: &str,
+) -> Result<T, XmlError> {
+    let text = reader.read_text(element)?;
+    parse_text_as(reader, &text, element)
 }
 
 // ---------------------------------------------------------------------------
 // Top-level document parsing
 // ---------------------------------------------------------------------------
 
-fn parse_ofx_body(xml: &str, header: OfxHeader) -> Result<OfxDocument, OfxError> {
+fn parse_ofx_body(
+    xml: &str,
+    header: OfxHeader,
+) -> Result<(OfxDocument, Vec<ParseWarning>), OfxError> {
     let mut reader = OfxReader::new(xml);
     let mut signon: Option<SignonResponse> = None;
     let mut banking: Option<BankingMessageSet> = None;
@@ -94,11 +150,7 @@ fn parse_ofx_body(xml: &str, header: OfxHeader) -> Result<OfxDocument, OfxError>
         match reader.next_event()? {
             Event::Start(e) if tag_name(&e) == "OFX" => break,
             Event::Eof => {
-                return Err(XmlError::MissingElement {
-                    parent: "document".to_owned(),
-                    element: "OFX".to_owned(),
-                }
-                .into());
+                return Err(reader.missing_in("document", "OFX").into());
             }
             _ => {}
         }
@@ -133,10 +185,7 @@ fn parse_ofx_body(xml: &str, header: OfxHeader) -> Result<OfxDocument, OfxError>
         }
     }
 
-    let signon = signon.ok_or_else(|| XmlError::MissingElement {
-        parent: "OFX".to_owned(),
-        element: "SIGNONMSGSRSV1".to_owned(),
-    })?;
+    let signon = signon.ok_or_else(|| reader.missing_in("OFX", "SIGNONMSGSRSV1"))?;
 
     let mut doc = OfxDocument::new(header, signon);
     if let Some(b) = banking {
@@ -149,7 +198,7 @@ fn parse_ofx_body(xml: &str, header: OfxHeader) -> Result<OfxDocument, OfxError>
         doc = doc.with_investment(inv);
     }
 
-    Ok(doc)
+    Ok((doc, reader.take_warnings()))
 }
 
 // ---------------------------------------------------------------------------
@@ -169,17 +218,12 @@ fn parse_signon_message_set(reader: &mut OfxReader<'_>) -> Result<SignonResponse
                 reader.skip_element(&name)?;
             }
             Event::End(e) if end_tag_name(&e) == "SIGNONMSGSRSV1" => {
-                return Err(XmlError::MissingElement {
-                    parent: "SIGNONMSGSRSV1".to_owned(),
-                    element: "SONRS".to_owned(),
-                }
-                .into());
+                return Err(reader.missing_in("SIGNONMSGSRSV1", "SONRS").into());
             }
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in SIGNONMSGSRSV1".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in SIGNONMSGSRSV1".to_owned())
+                    .into());
             }
             _ => {}
         }
@@ -203,7 +247,7 @@ fn parse_sonrs(reader: &mut OfxReader<'_>) -> Result<SignonResponse, OfxError> {
                     "STATUS" => status = Some(parse_status(reader)?),
                     "DTSERVER" => {
                         let text = read_text(reader, "DTSERVER")?;
-                        dtserver = Some(parse_text_as(&text, "DTSERVER")?);
+                        dtserver = Some(parse_text_as(reader, &text, "DTSERVER")?);
                     }
                     "LANGUAGE" => language = Some(read_text(reader, "LANGUAGE")?),
                     "FI" => {
@@ -218,23 +262,16 @@ fn parse_sonrs(reader: &mut OfxReader<'_>) -> Result<SignonResponse, OfxError> {
             }
             Event::End(e) if end_tag_name(&e) == "SONRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in SONRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in SONRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let status = status.ok_or_else(|| XmlError::MissingElement {
-        parent: "SONRS".to_owned(),
-        element: "STATUS".to_owned(),
-    })?;
-    let dtserver = dtserver.ok_or_else(|| XmlError::MissingElement {
-        parent: "SONRS".to_owned(),
-        element: "DTSERVER".to_owned(),
-    })?;
+    let status = status.ok_or_else(|| reader.missing_in("SONRS", "STATUS"))?;
+    let dtserver = dtserver.ok_or_else(|| reader.missing_in("SONRS", "DTSERVER"))?;
     let language = language.unwrap_or_else(|| "ENG".to_owned());
 
     let mut sonrs = SignonResponse::new(status, dtserver, language);
@@ -269,10 +306,7 @@ fn parse_fi(reader: &mut OfxReader<'_>) -> Result<(Option<String>, Option<String
             }
             Event::End(e) if end_tag_name(&e) == "FI" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in FI".to_owned(),
-                }
-                .into());
+                return Err(reader.malformed("unexpected EOF in FI".to_owned()).into());
             }
             _ => {}
         }
@@ -296,11 +330,11 @@ fn parse_status(reader: &mut OfxReader<'_>) -> Result<Status, OfxError> {
                 match name.as_str() {
                     "CODE" => {
                         let text = read_text(reader, "CODE")?;
-                        code = Some(parse_text_as(&text, "CODE")?);
+                        code = Some(parse_text_as(reader, &text, "CODE")?);
                     }
                     "SEVERITY" => {
                         let text = read_text(reader, "SEVERITY")?;
-                        severity = Some(parse_text_as(&text, "SEVERITY")?);
+                        severity = Some(parse_text_as(reader, &text, "SEVERITY")?);
                     }
                     "MESSAGE" => message = Some(read_text(reader, "MESSAGE")?),
                     _ => reader.skip_element(&name)?,
@@ -308,23 +342,16 @@ fn parse_status(reader: &mut OfxReader<'_>) -> Result<Status, OfxError> {
             }
             Event::End(e) if end_tag_name(&e) == "STATUS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in STATUS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in STATUS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let code = code.ok_or_else(|| XmlError::MissingElement {
-        parent: "STATUS".to_owned(),
-        element: "CODE".to_owned(),
-    })?;
-    let severity = severity.ok_or_else(|| XmlError::MissingElement {
-        parent: "STATUS".to_owned(),
-        element: "SEVERITY".to_owned(),
-    })?;
+    let code = code.ok_or_else(|| reader.missing_in("STATUS", "CODE"))?;
+    let severity = severity.ok_or_else(|| reader.missing_in("STATUS", "SEVERITY"))?;
 
     Ok(Status::new(code, severity, message))
 }
@@ -348,10 +375,9 @@ fn parse_banking_message_set(reader: &mut OfxReader<'_>) -> Result<BankingMessag
             }
             Event::End(e) if end_tag_name(&e) == "BANKMSGSRSV1" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in BANKMSGSRSV1".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in BANKMSGSRSV1".to_owned())
+                    .into());
             }
             _ => {}
         }
@@ -382,23 +408,16 @@ fn parse_stmttrnrs(
             }
             Event::End(e) if end_tag_name(&e) == "STMTTRNRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in STMTTRNRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in STMTTRNRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let trnuid = trnuid.ok_or_else(|| XmlError::MissingElement {
-        parent: "STMTTRNRS".to_owned(),
-        element: "TRNUID".to_owned(),
-    })?;
-    let status = status.ok_or_else(|| XmlError::MissingElement {
-        parent: "STMTTRNRS".to_owned(),
-        element: "STATUS".to_owned(),
-    })?;
+    let trnuid = trnuid.ok_or_else(|| reader.missing_in("STMTTRNRS", "TRNUID"))?;
+    let status = status.ok_or_else(|| reader.missing_in("STMTTRNRS", "STATUS"))?;
 
     let mut wrapper = TransactionWrapper::new(trnuid, status, stmtrs);
     if let Some(cookie) = client_cookie {
@@ -423,7 +442,7 @@ fn parse_stmtrs(reader: &mut OfxReader<'_>) -> Result<StatementResponse, OfxErro
                 match name.as_str() {
                     "CURDEF" => {
                         let text = read_text(reader, "CURDEF")?;
-                        curdef = Some(parse_text_as(&text, "CURDEF")?);
+                        curdef = Some(parse_text_as(reader, &text, "CURDEF")?);
                     }
                     "BANKACCTFROM" => bank_acct = Some(parse_bank_account(reader, "BANKACCTFROM")?),
                     "BANKTRANLIST" => transaction_list = Some(parse_bank_transaction_list(reader)?),
@@ -436,23 +455,16 @@ fn parse_stmtrs(reader: &mut OfxReader<'_>) -> Result<StatementResponse, OfxErro
             }
             Event::End(e) if end_tag_name(&e) == "STMTRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in STMTRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in STMTRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let curdef = curdef.ok_or_else(|| XmlError::MissingElement {
-        parent: "STMTRS".to_owned(),
-        element: "CURDEF".to_owned(),
-    })?;
-    let bank_acct = bank_acct.ok_or_else(|| XmlError::MissingElement {
-        parent: "STMTRS".to_owned(),
-        element: "BANKACCTFROM".to_owned(),
-    })?;
+    let curdef = curdef.ok_or_else(|| reader.missing_in("STMTRS", "CURDEF"))?;
+    let bank_acct = bank_acct.ok_or_else(|| reader.missing_in("STMTRS", "BANKACCTFROM"))?;
 
     let mut stmt = StatementResponse::new(curdef, bank_acct);
     if let Some(tl) = transaction_list {
@@ -490,11 +502,11 @@ fn parse_bank_transaction_list(reader: &mut OfxReader<'_>) -> Result<Transaction
                 match name.as_str() {
                     "DTSTART" => {
                         let text = read_text(reader, "DTSTART")?;
-                        dtstart = Some(parse_text_as(&text, "DTSTART")?);
+                        dtstart = Some(parse_text_as(reader, &text, "DTSTART")?);
                     }
                     "DTEND" => {
                         let text = read_text(reader, "DTEND")?;
-                        dtend = Some(parse_text_as(&text, "DTEND")?);
+                        dtend = Some(parse_text_as(reader, &text, "DTEND")?);
                     }
                     "STMTTRN" => {
                         transactions.push(parse_statement_transaction(reader)?);
@@ -504,23 +516,16 @@ fn parse_bank_transaction_list(reader: &mut OfxReader<'_>) -> Result<Transaction
             }
             Event::End(e) if end_tag_name(&e) == "BANKTRANLIST" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in BANKTRANLIST".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in BANKTRANLIST".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let dtstart = dtstart.ok_or_else(|| XmlError::MissingElement {
-        parent: "BANKTRANLIST".to_owned(),
-        element: "DTSTART".to_owned(),
-    })?;
-    let dtend = dtend.ok_or_else(|| XmlError::MissingElement {
-        parent: "BANKTRANLIST".to_owned(),
-        element: "DTEND".to_owned(),
-    })?;
+    let dtstart = dtstart.ok_or_else(|| reader.missing_in("BANKTRANLIST", "DTSTART"))?;
+    let dtend = dtend.ok_or_else(|| reader.missing_in("BANKTRANLIST", "DTEND"))?;
 
     Ok(TransactionList::new(dtstart, dtend, transactions))
 }
@@ -535,20 +540,18 @@ fn apply_stmttrn_field(
     name: &str,
 ) -> Result<StatementTransactionBuilder, OfxError> {
     Ok(match name {
-        "TRNTYPE" => builder.transaction_type(parse_text_as(&read_text(reader, name)?, name)?),
-        "DTPOSTED" => builder.date_posted(parse_text_as(&read_text(reader, name)?, name)?),
-        "DTUSER" => builder.date_user(parse_text_as(&read_text(reader, name)?, name)?),
-        "DTAVAIL" => builder.date_available(parse_text_as(&read_text(reader, name)?, name)?),
-        "TRNAMT" => builder.amount(parse_text_as(&read_text(reader, name)?, name)?),
-        "FITID" => builder.fit_id(parse_text_as(&read_text(reader, name)?, name)?),
-        "CORRECTFITID" => builder.correction_id(parse_text_as(&read_text(reader, name)?, name)?),
-        "CORRECTACTION" => {
-            builder.correction_action(parse_text_as(&read_text(reader, name)?, name)?)
-        }
-        "SRVRTID" => builder.server_transaction_id(parse_text_as(&read_text(reader, name)?, name)?),
-        "CHECKNUM" => builder.check_number(parse_text_as(&read_text(reader, name)?, name)?),
+        "TRNTYPE" => builder.transaction_type(parse_next_as(reader, name)?),
+        "DTPOSTED" => builder.date_posted(parse_next_as(reader, name)?),
+        "DTUSER" => builder.date_user(parse_next_as(reader, name)?),
+        "DTAVAIL" => builder.date_available(parse_next_as(reader, name)?),
+        "TRNAMT" => builder.amount(parse_next_as(reader, name)?),
+        "FITID" => builder.fit_id(parse_next_as(reader, name)?),
+        "CORRECTFITID" => builder.correction_id(parse_next_as(reader, name)?),
+        "CORRECTACTION" => builder.correction_action(parse_next_as(reader, name)?),
+        "SRVRTID" => builder.server_transaction_id(parse_next_as(reader, name)?),
+        "CHECKNUM" => builder.check_number(parse_next_as(reader, name)?),
         "REFNUM" => builder.reference_number(read_text(reader, name)?),
-        "SIC" => builder.sic(parse_text_as(&read_text(reader, name)?, name)?),
+        "SIC" => builder.sic(parse_next_as(reader, name)?),
         "PAYEEID" => builder.payee_id(read_text(reader, name)?),
         "NAME" => builder.name(read_text(reader, name)?),
         "PAYEE" => builder.payee(parse_payee(reader)?),
@@ -556,7 +559,7 @@ fn apply_stmttrn_field(
         "CCACCTTO" => builder.cc_account_to(parse_cc_account(reader, name)?),
         "MEMO" => builder.memo(read_text(reader, name)?),
         "CURRENCY" | "ORIGCURRENCY" => builder.currency(parse_currency(reader, name)?),
-        "INV401KSOURCE" => builder.inv401k_source(parse_text_as(&read_text(reader, name)?, name)?),
+        "INV401KSOURCE" => builder.inv401k_source(parse_next_as(reader, name)?),
         _ => {
             reader.skip_element(name)?;
             builder
@@ -577,20 +580,17 @@ fn parse_statement_transaction(
             }
             Event::End(e) if end_tag_name(&e) == "STMTTRN" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in STMTTRN".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in STMTTRN".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    builder.build().map_err(|msg| {
-        OfxError::Xml(XmlError::MalformedXml {
-            message: format!("failed to build STMTTRN: {msg}"),
-        })
-    })
+    builder
+        .build()
+        .map_err(|msg| OfxError::Xml(reader.malformed(format!("failed to build STMTTRN: {msg}"))))
 }
 
 // ---------------------------------------------------------------------------
@@ -608,34 +608,27 @@ fn parse_ledger_balance(reader: &mut OfxReader<'_>) -> Result<LedgerBalance, Ofx
                 match name.as_str() {
                     "BALAMT" => {
                         let text = read_text(reader, "BALAMT")?;
-                        balamt = Some(parse_text_as(&text, "BALAMT")?);
+                        balamt = Some(parse_text_as(reader, &text, "BALAMT")?);
                     }
                     "DTASOF" => {
                         let text = read_text(reader, "DTASOF")?;
-                        dtasof = Some(parse_text_as(&text, "DTASOF")?);
+                        dtasof = Some(parse_text_as(reader, &text, "DTASOF")?);
                     }
                     _ => reader.skip_element(&name)?,
                 }
             }
             Event::End(e) if end_tag_name(&e) == "LEDGERBAL" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in LEDGERBAL".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in LEDGERBAL".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let balamt = balamt.ok_or_else(|| XmlError::MissingElement {
-        parent: "LEDGERBAL".to_owned(),
-        element: "BALAMT".to_owned(),
-    })?;
-    let dtasof = dtasof.ok_or_else(|| XmlError::MissingElement {
-        parent: "LEDGERBAL".to_owned(),
-        element: "DTASOF".to_owned(),
-    })?;
+    let balamt = balamt.ok_or_else(|| reader.missing_in("LEDGERBAL", "BALAMT"))?;
+    let dtasof = dtasof.ok_or_else(|| reader.missing_in("LEDGERBAL", "DTASOF"))?;
 
     Ok(LedgerBalance::new(balamt, dtasof))
 }
@@ -651,34 +644,27 @@ fn parse_available_balance(reader: &mut OfxReader<'_>) -> Result<AvailableBalanc
                 match name.as_str() {
                     "BALAMT" => {
                         let text = read_text(reader, "BALAMT")?;
-                        balamt = Some(parse_text_as(&text, "BALAMT")?);
+                        balamt = Some(parse_text_as(reader, &text, "BALAMT")?);
                     }
                     "DTASOF" => {
                         let text = read_text(reader, "DTASOF")?;
-                        dtasof = Some(parse_text_as(&text, "DTASOF")?);
+                        dtasof = Some(parse_text_as(reader, &text, "DTASOF")?);
                     }
                     _ => reader.skip_element(&name)?,
                 }
             }
             Event::End(e) if end_tag_name(&e) == "AVAILBAL" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in AVAILBAL".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in AVAILBAL".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let balamt = balamt.ok_or_else(|| XmlError::MissingElement {
-        parent: "AVAILBAL".to_owned(),
-        element: "BALAMT".to_owned(),
-    })?;
-    let dtasof = dtasof.ok_or_else(|| XmlError::MissingElement {
-        parent: "AVAILBAL".to_owned(),
-        element: "DTASOF".to_owned(),
-    })?;
+    let balamt = balamt.ok_or_else(|| reader.missing_in("AVAILBAL", "BALAMT"))?;
+    let dtasof = dtasof.ok_or_else(|| reader.missing_in("AVAILBAL", "DTASOF"))?;
 
     Ok(AvailableBalance::new(balamt, dtasof))
 }
@@ -698,10 +684,9 @@ fn parse_balance_list(reader: &mut OfxReader<'_>) -> Result<Vec<Balance>, OfxErr
             }
             Event::End(e) if end_tag_name(&e) == "BALLIST" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in BALLIST".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in BALLIST".to_owned())
+                    .into());
             }
             _ => {}
         }
@@ -727,50 +712,35 @@ fn parse_bal(reader: &mut OfxReader<'_>) -> Result<Balance, OfxError> {
                     "DESC" => desc = Some(read_text(reader, "DESC")?),
                     "BALTYPE" => {
                         let text = read_text(reader, "BALTYPE")?;
-                        bal_type = Some(parse_text_as(&text, "BALTYPE")?);
+                        bal_type = Some(parse_text_as(reader, &text, "BALTYPE")?);
                     }
                     "VALUE" => {
                         let text = read_text(reader, "VALUE")?;
-                        value = Some(parse_text_as(&text, "VALUE")?);
+                        value = Some(parse_text_as(reader, &text, "VALUE")?);
                     }
                     "DTASOF" => {
                         let text = read_text(reader, "DTASOF")?;
-                        dtasof = Some(parse_text_as(&text, "DTASOF")?);
+                        dtasof = Some(parse_text_as(reader, &text, "DTASOF")?);
                     }
                     "CURRENCY" => {
                         let text = read_text(reader, "CURRENCY")?;
-                        currency = Some(parse_text_as(&text, "CURRENCY")?);
+                        currency = Some(parse_text_as(reader, &text, "CURRENCY")?);
                     }
                     _ => reader.skip_element(&tag)?,
                 }
             }
             Event::End(e) if end_tag_name(&e) == "BAL" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in BAL".to_owned(),
-                }
-                .into());
+                return Err(reader.malformed("unexpected EOF in BAL".to_owned()).into());
             }
             _ => {}
         }
     }
 
-    let name = name.ok_or_else(|| XmlError::MissingElement {
-        parent: "BAL".to_owned(),
-        element: "NAME".to_owned(),
-    })?;
-    let desc = desc.ok_or_else(|| XmlError::MissingElement {
-        parent: "BAL".to_owned(),
-        element: "DESC".to_owned(),
-    })?;
-    let bal_type = bal_type.ok_or_else(|| XmlError::MissingElement {
-        parent: "BAL".to_owned(),
-        element: "BALTYPE".to_owned(),
-    })?;
-    let value = value.ok_or_else(|| XmlError::MissingElement {
-        parent: "BAL".to_owned(),
-        element: "VALUE".to_owned(),
-    })?;
+    let name = name.ok_or_else(|| reader.missing_in("BAL", "NAME"))?;
+    let desc = desc.ok_or_else(|| reader.missing_in("BAL", "DESC"))?;
+    let bal_type = bal_type.ok_or_else(|| reader.missing_in("BAL", "BALTYPE"))?;
+    let value = value.ok_or_else(|| reader.missing_in("BAL", "VALUE"))?;
 
     Ok(Balance::new(name, desc, bal_type, value, dtasof, currency))
 }
@@ -796,19 +766,19 @@ fn parse_bank_account(
                 match name.as_str() {
                     "BANKID" => {
                         let text = read_text(reader, "BANKID")?;
-                        bank_id = Some(parse_text_as(&text, "BANKID")?);
+                        bank_id = Some(parse_text_as(reader, &text, "BANKID")?);
                     }
                     "BRANCHID" => {
                         let text = read_text(reader, "BRANCHID")?;
-                        branch_id = Some(parse_text_as(&text, "BRANCHID")?);
+                        branch_id = Some(parse_text_as(reader, &text, "BRANCHID")?);
                     }
                     "ACCTID" => {
                         let text = read_text(reader, "ACCTID")?;
-                        acct_id = Some(parse_text_as(&text, "ACCTID")?);
+                        acct_id = Some(parse_text_as(reader, &text, "ACCTID")?);
                     }
                     "ACCTTYPE" => {
                         let text = read_text(reader, "ACCTTYPE")?;
-                        acct_type = Some(parse_text_as(&text, "ACCTTYPE")?);
+                        acct_type = Some(parse_text_as(reader, &text, "ACCTTYPE")?);
                     }
                     "ACCTKEY" => acct_key = Some(read_text(reader, "ACCTKEY")?),
                     _ => reader.skip_element(&name)?,
@@ -816,27 +786,17 @@ fn parse_bank_account(
             }
             Event::End(e) if end_tag_name(&e) == closing_tag => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: format!("unexpected EOF in {closing_tag}"),
-                }
-                .into());
+                return Err(reader
+                    .malformed(format!("unexpected EOF in {closing_tag}"))
+                    .into());
             }
             _ => {}
         }
     }
 
-    let bank_id = bank_id.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "BANKID".to_owned(),
-    })?;
-    let acct_id = acct_id.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "ACCTID".to_owned(),
-    })?;
-    let acct_type = acct_type.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "ACCTTYPE".to_owned(),
-    })?;
+    let bank_id = bank_id.ok_or_else(|| reader.missing_in(closing_tag, "BANKID"))?;
+    let acct_id = acct_id.ok_or_else(|| reader.missing_in(closing_tag, "ACCTID"))?;
+    let acct_type = acct_type.ok_or_else(|| reader.missing_in(closing_tag, "ACCTTYPE"))?;
 
     Ok(BankAccount::new(
         bank_id, branch_id, acct_id, acct_type, acct_key,
@@ -857,7 +817,7 @@ fn parse_cc_account(
                 match name.as_str() {
                     "ACCTID" => {
                         let text = read_text(reader, "ACCTID")?;
-                        acct_id = Some(parse_text_as(&text, "ACCTID")?);
+                        acct_id = Some(parse_text_as(reader, &text, "ACCTID")?);
                     }
                     "ACCTKEY" => acct_key = Some(read_text(reader, "ACCTKEY")?),
                     _ => reader.skip_element(&name)?,
@@ -865,19 +825,15 @@ fn parse_cc_account(
             }
             Event::End(e) if end_tag_name(&e) == closing_tag => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: format!("unexpected EOF in {closing_tag}"),
-                }
-                .into());
+                return Err(reader
+                    .malformed(format!("unexpected EOF in {closing_tag}"))
+                    .into());
             }
             _ => {}
         }
     }
 
-    let acct_id = acct_id.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "ACCTID".to_owned(),
-    })?;
+    let acct_id = acct_id.ok_or_else(|| reader.missing_in(closing_tag, "ACCTID"))?;
 
     Ok(CreditCardAccount::new(acct_id, acct_key))
 }
@@ -916,39 +872,20 @@ fn parse_payee(reader: &mut OfxReader<'_>) -> Result<Payee, OfxError> {
             }
             Event::End(e) if end_tag_name(&e) == "PAYEE" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in PAYEE".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in PAYEE".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let name = name.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "NAME".to_owned(),
-    })?;
-    let addr1 = addr1.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "ADDR1".to_owned(),
-    })?;
-    let city = city.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "CITY".to_owned(),
-    })?;
-    let state = state.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "STATE".to_owned(),
-    })?;
-    let postalcode = postalcode.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "POSTALCODE".to_owned(),
-    })?;
-    let phone = phone.ok_or_else(|| XmlError::MissingElement {
-        parent: "PAYEE".to_owned(),
-        element: "PHONE".to_owned(),
-    })?;
+    let name = name.ok_or_else(|| reader.missing_in("PAYEE", "NAME"))?;
+    let addr1 = addr1.ok_or_else(|| reader.missing_in("PAYEE", "ADDR1"))?;
+    let city = city.ok_or_else(|| reader.missing_in("PAYEE", "CITY"))?;
+    let state = state.ok_or_else(|| reader.missing_in("PAYEE", "STATE"))?;
+    let postalcode = postalcode.ok_or_else(|| reader.missing_in("PAYEE", "POSTALCODE"))?;
+    let phone = phone.ok_or_else(|| reader.missing_in("PAYEE", "PHONE"))?;
 
     let mut payee = Payee::new(name, addr1, city, state, postalcode, phone);
     if let Some(a2) = addr2 {
@@ -978,34 +915,27 @@ fn parse_currency(reader: &mut OfxReader<'_>, closing_tag: &str) -> Result<Curre
                 match name.as_str() {
                     "CURRATE" => {
                         let text = read_text(reader, "CURRATE")?;
-                        currate = Some(parse_text_as(&text, "CURRATE")?);
+                        currate = Some(parse_text_as(reader, &text, "CURRATE")?);
                     }
                     "CURSYM" => {
                         let text = read_text(reader, "CURSYM")?;
-                        cursym = Some(parse_text_as(&text, "CURSYM")?);
+                        cursym = Some(parse_text_as(reader, &text, "CURSYM")?);
                     }
                     _ => reader.skip_element(&name)?,
                 }
             }
             Event::End(e) if end_tag_name(&e) == closing_tag => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: format!("unexpected EOF in {closing_tag}"),
-                }
-                .into());
+                return Err(reader
+                    .malformed(format!("unexpected EOF in {closing_tag}"))
+                    .into());
             }
             _ => {}
         }
     }
 
-    let currate = currate.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "CURRATE".to_owned(),
-    })?;
-    let cursym = cursym.ok_or_else(|| XmlError::MissingElement {
-        parent: closing_tag.to_owned(),
-        element: "CURSYM".to_owned(),
-    })?;
+    let currate = currate.ok_or_else(|| reader.missing_in(closing_tag, "CURRATE"))?;
+    let cursym = cursym.ok_or_else(|| reader.missing_in(closing_tag, "CURSYM"))?;
 
     Ok(match closing_tag {
         "ORIGCURRENCY" => CurrencyInfo::OrigCurrency {
@@ -1038,10 +968,9 @@ fn parse_cc_message_set(reader: &mut OfxReader<'_>) -> Result<CreditCardMessageS
             }
             Event::End(e) if end_tag_name(&e) == "CREDITCARDMSGSRSV1" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in CREDITCARDMSGSRSV1".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in CREDITCARDMSGSRSV1".to_owned())
+                    .into());
             }
             _ => {}
         }
@@ -1072,23 +1001,16 @@ fn parse_ccstmttrnrs(
             }
             Event::End(e) if end_tag_name(&e) == "CCSTMTTRNRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in CCSTMTTRNRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in CCSTMTTRNRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let trnuid = trnuid.ok_or_else(|| XmlError::MissingElement {
-        parent: "CCSTMTTRNRS".to_owned(),
-        element: "TRNUID".to_owned(),
-    })?;
-    let status = status.ok_or_else(|| XmlError::MissingElement {
-        parent: "CCSTMTTRNRS".to_owned(),
-        element: "STATUS".to_owned(),
-    })?;
+    let trnuid = trnuid.ok_or_else(|| reader.missing_in("CCSTMTTRNRS", "TRNUID"))?;
+    let status = status.ok_or_else(|| reader.missing_in("CCSTMTTRNRS", "STATUS"))?;
 
     let mut wrapper = TransactionWrapper::new(trnuid, status, ccstmtrs);
     if let Some(cookie) = client_cookie {
@@ -1113,7 +1035,7 @@ fn parse_ccstmtrs(reader: &mut OfxReader<'_>) -> Result<CcStatementResponse, Ofx
                 match name.as_str() {
                     "CURDEF" => {
                         let text = read_text(reader, "CURDEF")?;
-                        curdef = Some(parse_text_as(&text, "CURDEF")?);
+                        curdef = Some(parse_text_as(reader, &text, "CURDEF")?);
                     }
                     "CCACCTFROM" => cc_acct = Some(parse_cc_account(reader, "CCACCTFROM")?),
                     "BANKTRANLIST" => transaction_list = Some(parse_bank_transaction_list(reader)?),
@@ -1126,23 +1048,16 @@ fn parse_ccstmtrs(reader: &mut OfxReader<'_>) -> Result<CcStatementResponse, Ofx
             }
             Event::End(e) if end_tag_name(&e) == "CCSTMTRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in CCSTMTRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in CCSTMTRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let curdef = curdef.ok_or_else(|| XmlError::MissingElement {
-        parent: "CCSTMTRS".to_owned(),
-        element: "CURDEF".to_owned(),
-    })?;
-    let cc_acct = cc_acct.ok_or_else(|| XmlError::MissingElement {
-        parent: "CCSTMTRS".to_owned(),
-        element: "CCACCTFROM".to_owned(),
-    })?;
+    let curdef = curdef.ok_or_else(|| reader.missing_in("CCSTMTRS", "CURDEF"))?;
+    let cc_acct = cc_acct.ok_or_else(|| reader.missing_in("CCSTMTRS", "CCACCTFROM"))?;
 
     let mut stmt = CcStatementResponse::new(curdef, cc_acct);
     if let Some(tl) = transaction_list {
@@ -1185,10 +1100,9 @@ fn parse_investment_message_set(
             }
             Event::End(e) if end_tag_name(&e) == "INVSTMTMSGSRSV1" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVSTMTMSGSRSV1".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVSTMTMSGSRSV1".to_owned())
+                    .into());
             }
             _ => {}
         }
@@ -1219,23 +1133,16 @@ fn parse_invstmttrnrs(
             }
             Event::End(e) if end_tag_name(&e) == "INVSTMTTRNRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVSTMTTRNRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVSTMTTRNRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let trnuid = trnuid.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVSTMTTRNRS".to_owned(),
-        element: "TRNUID".to_owned(),
-    })?;
-    let status = status.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVSTMTTRNRS".to_owned(),
-        element: "STATUS".to_owned(),
-    })?;
+    let trnuid = trnuid.ok_or_else(|| reader.missing_in("INVSTMTTRNRS", "TRNUID"))?;
+    let status = status.ok_or_else(|| reader.missing_in("INVSTMTTRNRS", "STATUS"))?;
 
     let mut wrapper = TransactionWrapper::new(trnuid, status, invstmtrs);
     if let Some(cookie) = client_cookie {
@@ -1256,7 +1163,7 @@ fn parse_invstmtrs(reader: &mut OfxReader<'_>) -> Result<InvStatementResponse, O
                 match name.as_str() {
                     "CURDEF" => {
                         let text = read_text(reader, "CURDEF")?;
-                        curdef = Some(parse_text_as(&text, "CURDEF")?);
+                        curdef = Some(parse_text_as(reader, &text, "CURDEF")?);
                     }
                     "INVACCTFROM" => {
                         inv_acct = Some(parse_investment_account(reader)?);
@@ -1269,23 +1176,16 @@ fn parse_invstmtrs(reader: &mut OfxReader<'_>) -> Result<InvStatementResponse, O
             }
             Event::End(e) if end_tag_name(&e) == "INVSTMTRS" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVSTMTRS".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVSTMTRS".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let curdef = curdef.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVSTMTRS".to_owned(),
-        element: "CURDEF".to_owned(),
-    })?;
-    let inv_acct = inv_acct.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVSTMTRS".to_owned(),
-        element: "INVACCTFROM".to_owned(),
-    })?;
+    let curdef = curdef.ok_or_else(|| reader.missing_in("INVSTMTRS", "CURDEF"))?;
+    let inv_acct = inv_acct.ok_or_else(|| reader.missing_in("INVSTMTRS", "INVACCTFROM"))?;
 
     let mut stmt = InvStatementResponse::new(curdef, inv_acct);
     if let Some(tl) = transaction_list {
@@ -1307,30 +1207,23 @@ fn parse_investment_account(reader: &mut OfxReader<'_>) -> Result<InvestmentAcco
                     "BROKERID" => broker_id = Some(read_text(reader, "BROKERID")?),
                     "ACCTID" => {
                         let text = read_text(reader, "ACCTID")?;
-                        acct_id = Some(parse_text_as(&text, "ACCTID")?);
+                        acct_id = Some(parse_text_as(reader, &text, "ACCTID")?);
                     }
                     _ => reader.skip_element(&name)?,
                 }
             }
             Event::End(e) if end_tag_name(&e) == "INVACCTFROM" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVACCTFROM".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVACCTFROM".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let broker_id = broker_id.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVACCTFROM".to_owned(),
-        element: "BROKERID".to_owned(),
-    })?;
-    let acct_id = acct_id.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVACCTFROM".to_owned(),
-        element: "ACCTID".to_owned(),
-    })?;
+    let broker_id = broker_id.ok_or_else(|| reader.missing_in("INVACCTFROM", "BROKERID"))?;
+    let acct_id = acct_id.ok_or_else(|| reader.missing_in("INVACCTFROM", "ACCTID"))?;
 
     Ok(InvestmentAccount::new(broker_id, acct_id))
 }
@@ -1349,11 +1242,11 @@ fn parse_inv_transaction_list(reader: &mut OfxReader<'_>) -> Result<TransactionL
                 match name.as_str() {
                     "DTSTART" => {
                         let text = read_text(reader, "DTSTART")?;
-                        dtstart = Some(parse_text_as(&text, "DTSTART")?);
+                        dtstart = Some(parse_text_as(reader, &text, "DTSTART")?);
                     }
                     "DTEND" => {
                         let text = read_text(reader, "DTEND")?;
-                        dtend = Some(parse_text_as(&text, "DTEND")?);
+                        dtend = Some(parse_text_as(reader, &text, "DTEND")?);
                     }
                     "INVBANKTRAN" => {
                         if let Some(txn) = parse_invbanktran(reader)? {
@@ -1365,23 +1258,16 @@ fn parse_inv_transaction_list(reader: &mut OfxReader<'_>) -> Result<TransactionL
             }
             Event::End(e) if end_tag_name(&e) == "INVTRANLIST" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVTRANLIST".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVTRANLIST".to_owned())
+                    .into());
             }
             _ => {}
         }
     }
 
-    let dtstart = dtstart.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVTRANLIST".to_owned(),
-        element: "DTSTART".to_owned(),
-    })?;
-    let dtend = dtend.ok_or_else(|| XmlError::MissingElement {
-        parent: "INVTRANLIST".to_owned(),
-        element: "DTEND".to_owned(),
-    })?;
+    let dtstart = dtstart.ok_or_else(|| reader.missing_in("INVTRANLIST", "DTSTART"))?;
+    let dtend = dtend.ok_or_else(|| reader.missing_in("INVTRANLIST", "DTEND"))?;
 
     Ok(TransactionList::new(dtstart, dtend, transactions))
 }
@@ -1406,10 +1292,9 @@ fn parse_invbanktran(
             }
             Event::End(e) if end_tag_name(&e) == "INVBANKTRAN" => break,
             Event::Eof => {
-                return Err(XmlError::MalformedXml {
-                    message: "unexpected EOF in INVBANKTRAN".to_owned(),
-                }
-                .into());
+                return Err(reader
+                    .malformed("unexpected EOF in INVBANKTRAN".to_owned())
+                    .into());
             }
             _ => {}
         }

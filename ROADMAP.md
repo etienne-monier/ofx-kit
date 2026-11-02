@@ -129,6 +129,8 @@ validation reports, TTY-aware color, `NO_COLOR`, and exit codes 0/1/2.
 
 ### 3. Robust SGML handling
 
+**Status: completed.**
+
 - Extract a reusable SGML tokenizer for tags, text, entities, comments, and
   processing instructions.
 - Replace scattered hard-coded relationships with a shared schema used by the

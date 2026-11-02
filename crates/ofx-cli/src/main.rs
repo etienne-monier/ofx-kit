@@ -7,7 +7,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use ofx_kit::document::OfxDocument;
 use ofx_kit::header::parse_header;
-use ofx_kit::{DecodeWarning, OfxError, decode, parse_bytes};
+use ofx_kit::xml::{XmlError, XmlErrorKind};
+use ofx_kit::{DecodeWarning, ElementPath, OfxError, decode, parse_bytes};
 use serde::Serialize;
 use time::Date;
 use time::format_description::well_known::Rfc3339;
@@ -352,9 +353,12 @@ fn report(loaded: &Loaded, args: &InspectArgs) -> Result<ReportJson, OfxError> {
     if let (Some(from), Some(to)) = (args.from, args.to)
         && from > to
     {
-        return Err(OfxError::Xml(ofx_kit::xml::XmlError::MalformedXml {
-            message: "--from must not be later than --to".to_owned(),
-        }));
+        return Err(OfxError::Xml(XmlError::new(
+            XmlErrorKind::MalformedXml {
+                message: "--from must not be later than --to".to_owned(),
+            },
+            ElementPath::new(),
+        )));
     }
     let header = document.header();
     let mut statements = document

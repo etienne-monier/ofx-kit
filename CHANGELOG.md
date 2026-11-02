@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `ofx inspect`, `ofx validate`, and `ofx decode` commands.
 - Stable JSON output for inspection and validation.
+- A tokenizer-backed OFX 1.x SGML normalizer with shared schema relationships.
+- `parse_with_warnings` and `parse_bytes_with_warnings` for non-fatal parse diagnostics.
+
+### Changed
+
+- XML errors now carry an element path and a structured, non-exhaustive error kind.
+- SGML text is preserved verbatim during normalization, including UTF-8 and CRLF input.
 
 ## [0.3.0] - 2026-11-02
 

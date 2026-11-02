@@ -2,6 +2,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 
 use super::XmlError;
+use crate::diagnostics::{ElementPath, ParseWarning};
 
 /// Result of reading an element's content: either text or nested children.
 enum TextOrChildren {
@@ -13,6 +14,8 @@ enum TextOrChildren {
 pub struct OfxReader<'a> {
     reader: Reader<&'a [u8]>,
     buf: Vec<u8>,
+    path: ElementPath,
+    warnings: Vec<ParseWarning>,
 }
 
 impl<'a> OfxReader<'a> {
@@ -24,7 +27,56 @@ impl<'a> OfxReader<'a> {
         Self {
             reader,
             buf: Vec::with_capacity(256),
+            path: ElementPath::new(),
+            warnings: Vec::new(),
         }
+    }
+
+    /// Returns the path of the element currently being parsed.
+    #[must_use]
+    pub fn path(&self) -> &ElementPath {
+        &self.path
+    }
+
+    /// Takes the warnings collected while reading.
+    pub fn take_warnings(&mut self) -> Vec<ParseWarning> {
+        core::mem::take(&mut self.warnings)
+    }
+
+    /// Builds a malformed-XML error at the current path.
+    pub(crate) fn malformed(&self, message: impl Into<String>) -> XmlError {
+        XmlError::malformed(self.path.clone(), message)
+    }
+
+    /// Builds a missing-element error for `element` inside `parent`.
+    ///
+    /// When the reader has already consumed the closing tag of `parent`, the
+    /// current path points at the parent of `parent`; append it so the error
+    /// still identifies the aggregate that was missing the element.
+    pub(crate) fn missing_in(&self, parent: impl AsRef<str>, element: impl AsRef<str>) -> XmlError {
+        let parent = parent.as_ref();
+        let element = element.as_ref();
+        let path = if self.path.last() == Some(parent) {
+            self.path.clone()
+        } else {
+            self.path.child(parent)
+        };
+        XmlError::missing(path, parent, element)
+    }
+
+    /// Builds an invalid-content error for `element`.
+    pub(crate) fn invalid_content(
+        &self,
+        element: &str,
+        value: &str,
+        reason: impl Into<String>,
+    ) -> XmlError {
+        let path = if self.path.last() == Some(element) {
+            self.path.clone()
+        } else {
+            self.path.child(element)
+        };
+        XmlError::invalid_content(path, element, value, reason)
     }
 
     /// Read the next XML event, skipping comments and declarations.
@@ -37,11 +89,20 @@ impl<'a> OfxReader<'a> {
             self.buf.clear();
             match self.reader.read_event_into(&mut self.buf) {
                 Ok(Event::Comment(_) | Event::Decl(_) | Event::PI(_)) => {}
-                Ok(event) => return Ok(event.into_owned()),
+                Ok(event) => {
+                    match &event {
+                        Event::Start(e) => {
+                            self.path.push(&String::from_utf8_lossy(e.name().as_ref()));
+                        }
+                        Event::End(_) => {
+                            self.path.pop();
+                        }
+                        _ => {}
+                    }
+                    return Ok(event.into_owned());
+                }
                 Err(e) => {
-                    return Err(XmlError::MalformedXml {
-                        message: e.to_string(),
-                    });
+                    return Err(self.malformed(e.to_string()));
                 }
             }
         }
@@ -55,26 +116,32 @@ impl<'a> OfxReader<'a> {
     ///
     /// Returns an error if the XML is malformed or an unexpected element is encountered.
     pub fn read_text(&mut self, tag_name: &str) -> Result<String, XmlError> {
+        let path = self.path.clone();
         let mut text = String::new();
         loop {
             match self.next_event()? {
                 Event::Text(t) => {
-                    text.push_str(&String::from_utf8_lossy(&t));
+                    text.push_str(&decode_xml_text(&t));
+                }
+                Event::GeneralRef(reference) => {
+                    text.push_str(&decode_xml_reference(&reference));
                 }
                 Event::End(e) => {
                     let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     if name == tag_name {
                         return Ok(text);
                     }
-                    return Err(XmlError::UnexpectedElement {
-                        expected: tag_name.to_owned(),
-                        found: format!("/{name}"),
-                    });
+                    return Err(XmlError::unexpected(
+                        path,
+                        tag_name.to_owned(),
+                        format!("/{name}"),
+                    ));
                 }
                 Event::Eof => {
-                    return Err(XmlError::MalformedXml {
-                        message: format!("unexpected EOF while reading <{tag_name}>"),
-                    });
+                    return Err(XmlError::malformed(
+                        path,
+                        format!("unexpected EOF while reading <{tag_name}>"),
+                    ));
                 }
                 _ => {
                     // Nested elements within a text field are unexpected
@@ -92,6 +159,7 @@ impl<'a> OfxReader<'a> {
     ///
     /// Returns an error if the XML is malformed or EOF is reached unexpectedly.
     pub fn skip_to_end(&mut self, parent_tag: &str) -> Result<(), XmlError> {
+        let path = self.path.clone();
         let mut depth: u32 = 1;
         loop {
             match self.next_event()? {
@@ -106,9 +174,10 @@ impl<'a> OfxReader<'a> {
                     }
                 }
                 Event::Eof => {
-                    return Err(XmlError::MalformedXml {
-                        message: format!("unexpected EOF while skipping to end of <{parent_tag}>"),
-                    });
+                    return Err(XmlError::malformed(
+                        path,
+                        format!("unexpected EOF while skipping to end of <{parent_tag}>"),
+                    ));
                 }
                 _ => {}
             }
@@ -122,6 +191,14 @@ impl<'a> OfxReader<'a> {
     ///
     /// Returns an error if the XML is malformed or EOF is reached unexpectedly.
     pub fn skip_element(&mut self, tag_name: &str) -> Result<(), XmlError> {
+        if crate::schema::schema().kind(tag_name).is_none() {
+            self.warnings.push(ParseWarning::UnknownElement {
+                name: tag_name.to_owned(),
+                path: self.path.clone(),
+            });
+        }
+
+        let path = self.path.clone();
         let mut depth: u32 = 1;
         loop {
             match self.next_event()? {
@@ -141,9 +218,10 @@ impl<'a> OfxReader<'a> {
                     }
                 }
                 Event::Eof => {
-                    return Err(XmlError::MalformedXml {
-                        message: format!("unexpected EOF while skipping <{tag_name}>"),
-                    });
+                    return Err(XmlError::malformed(
+                        path,
+                        format!("unexpected EOF while skipping <{tag_name}>"),
+                    ));
                 }
                 _ => {}
             }
@@ -176,6 +254,7 @@ impl<'a> OfxReader<'a> {
         parent_tag: &str,
         elements: &mut Vec<(String, String)>,
     ) -> Result<(), XmlError> {
+        let path = self.path.clone();
         loop {
             match self.next_event()? {
                 Event::Start(e) => {
@@ -198,9 +277,10 @@ impl<'a> OfxReader<'a> {
                     }
                 }
                 Event::Eof => {
-                    return Err(XmlError::MalformedXml {
-                        message: format!("unexpected EOF while reading children of <{parent_tag}>"),
-                    });
+                    return Err(XmlError::malformed(
+                        path,
+                        format!("unexpected EOF while reading children of <{parent_tag}>"),
+                    ));
                 }
                 _ => {}
             }
@@ -211,11 +291,15 @@ impl<'a> OfxReader<'a> {
     /// child elements. Returns either the text content or a flattened list of
     /// child (tag, text) pairs.
     fn read_text_or_children(&mut self, tag_name: &str) -> Result<TextOrChildren, XmlError> {
+        let path = self.path.clone();
         let mut text = String::new();
         loop {
             match self.next_event()? {
                 Event::Text(t) => {
-                    text.push_str(&String::from_utf8_lossy(&t));
+                    text.push_str(&decode_xml_text(&t));
+                }
+                Event::GeneralRef(reference) => {
+                    text.push_str(&decode_xml_reference(&reference));
                 }
                 Event::End(e) => {
                     let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
@@ -223,10 +307,11 @@ impl<'a> OfxReader<'a> {
                         return Ok(TextOrChildren::Text(text));
                     }
                     // Unexpected end tag
-                    return Err(XmlError::UnexpectedElement {
-                        expected: tag_name.to_owned(),
-                        found: format!("/{name}"),
-                    });
+                    return Err(XmlError::unexpected(
+                        path,
+                        tag_name.to_owned(),
+                        format!("/{name}"),
+                    ));
                 }
                 Event::Start(e) => {
                     // This element has children -- it's an aggregate.
@@ -249,13 +334,31 @@ impl<'a> OfxReader<'a> {
                     return Ok(TextOrChildren::Children(children));
                 }
                 Event::Eof => {
-                    return Err(XmlError::MalformedXml {
-                        message: format!("unexpected EOF while reading <{tag_name}>"),
-                    });
+                    return Err(XmlError::malformed(
+                        path,
+                        format!("unexpected EOF while reading <{tag_name}>"),
+                    ));
                 }
                 _ => {}
             }
         }
+    }
+}
+
+fn decode_xml_text(raw: &[u8]) -> String {
+    let raw = String::from_utf8_lossy(raw);
+    match quick_xml::escape::unescape(&raw) {
+        Ok(value) => value.into_owned(),
+        Err(_) => raw.into_owned(),
+    }
+}
+
+fn decode_xml_reference(reference: &[u8]) -> String {
+    let reference = String::from_utf8_lossy(reference);
+    let raw = format!("&{reference};");
+    match quick_xml::escape::unescape(&raw) {
+        Ok(value) => value.into_owned(),
+        Err(_) => raw,
     }
 }
 
@@ -307,5 +410,38 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(children[0], ("CODE".to_owned(), "0".to_owned()));
         assert_eq!(children[1], ("SEVERITY".to_owned(), "INFO".to_owned()));
+    }
+
+    #[test]
+    fn tracks_element_paths() {
+        let xml = "<OFX><SONRS><STATUS></STATUS></SONRS></OFX>";
+        let mut reader = OfxReader::new(xml);
+        let _ = reader.next_event().unwrap();
+        assert_eq!(reader.path().to_string(), "OFX");
+        let _ = reader.next_event().unwrap();
+        assert_eq!(reader.path().to_string(), "OFX/SONRS");
+        let _ = reader.next_event().unwrap();
+        assert_eq!(reader.path().to_string(), "OFX/SONRS/STATUS");
+        let _ = reader.next_event().unwrap();
+        assert_eq!(reader.path().to_string(), "OFX/SONRS");
+    }
+
+    #[test]
+    fn warns_about_unknown_skipped_elements() {
+        let xml = "<OFX><UNKNOWN>value</UNKNOWN></OFX>";
+        let mut reader = OfxReader::new(xml);
+        let _ = reader.next_event().unwrap();
+        let start = reader.next_event().unwrap();
+        assert!(matches!(start, Event::Start(_)));
+        reader.skip_element("UNKNOWN").unwrap();
+        let warnings = reader.take_warnings();
+        assert_eq!(warnings.len(), 1);
+        match &warnings[0] {
+            ParseWarning::UnknownElement { name, path } => {
+                assert_eq!(name, "UNKNOWN");
+                assert_eq!(path.to_string(), "OFX/UNKNOWN");
+            }
+            other => panic!("unexpected warning: {other:?}"),
+        }
     }
 }

@@ -28,16 +28,21 @@
 //! ```
 
 pub mod aggregates;
+pub mod diagnostics;
 pub mod document;
 pub mod encoding;
 pub mod error;
 pub mod header;
 mod parser;
+mod schema;
 mod sgml;
 pub mod types;
 pub mod xml;
 
+pub use diagnostics::{ElementPath, ParseWarning};
 pub use document::OfxDocument;
 pub use encoding::{DecodeWarning, DecodedSource, DetectedEncoding, decode};
 pub use error::OfxError;
-pub use parser::{parse, parse_bytes};
+pub use parser::{
+    ParsedDocument, parse, parse_bytes, parse_bytes_with_warnings, parse_with_warnings,
+};

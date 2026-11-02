@@ -1,17 +1,23 @@
 use core::str::FromStr;
 
-use super::XmlError;
+use super::{XmlError, XmlErrorKind};
+use crate::diagnostics::ElementPath;
 
 /// Parse a text value into a typed value, with a descriptive error on failure.
 ///
 /// # Errors
 ///
-/// Returns `XmlError::InvalidContent` if the text cannot be parsed as type `T`.
+/// Returns `XmlErrorKind::InvalidContent` if the text cannot be parsed as type `T`.
 pub fn parse_text_as<T: FromStr>(text: &str, element_name: &str) -> Result<T, XmlError> {
-    text.parse::<T>().map_err(|_| XmlError::InvalidContent {
-        element: element_name.to_owned(),
-        value: text.to_owned(),
-        reason: format!("failed to parse as {}", core::any::type_name::<T>()),
+    text.parse::<T>().map_err(|_| {
+        XmlError::new(
+            XmlErrorKind::InvalidContent {
+                element: element_name.to_owned(),
+                value: text.to_owned(),
+                reason: format!("failed to parse as {}", core::any::type_name::<T>()),
+            },
+            ElementPath::new(),
+        )
     })
 }
 
@@ -19,7 +25,7 @@ pub fn parse_text_as<T: FromStr>(text: &str, element_name: &str) -> Result<T, Xm
 ///
 /// # Errors
 ///
-/// Returns `XmlError::MissingElement` if the element is not found.
+/// Returns `XmlErrorKind::MissingElement` if the element is not found.
 pub fn require_element<'a>(
     elements: &'a [(String, String)],
     tag: &str,
@@ -29,9 +35,14 @@ pub fn require_element<'a>(
         .iter()
         .find(|(name, _)| name == tag)
         .map(|(_, value)| value.as_str())
-        .ok_or_else(|| XmlError::MissingElement {
-            parent: parent.to_owned(),
-            element: tag.to_owned(),
+        .ok_or_else(|| {
+            XmlError::new(
+                XmlErrorKind::MissingElement {
+                    parent: parent.to_owned(),
+                    element: tag.to_owned(),
+                },
+                ElementPath::new(),
+            )
         })
 }
 
