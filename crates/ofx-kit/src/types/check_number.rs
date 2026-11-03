@@ -1,3 +1,5 @@
+//! Validated check number used by statement transactions.
+
 use super::validated_string::validated_string;
 
 validated_string!(

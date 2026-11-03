@@ -1,3 +1,5 @@
+//! OFX bank-account type enumeration and parser.
+
 use core::fmt;
 use core::str::FromStr;
 

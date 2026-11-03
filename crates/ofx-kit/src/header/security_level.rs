@@ -1,3 +1,5 @@
+//! OFX header security-level value.
+
 use core::fmt;
 use core::str::FromStr;
 

@@ -1,3 +1,5 @@
+//! OFX three-letter currency-code value.
+
 use core::fmt;
 use core::str::FromStr;
 

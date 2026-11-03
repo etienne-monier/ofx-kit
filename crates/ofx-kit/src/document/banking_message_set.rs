@@ -1,3 +1,5 @@
+//! Bank-message response set containing one or more statement responses.
+
 use crate::aggregates::{StatementResponse, TransactionWrapper};
 
 /// The banking message set response (BANKMSGSRSV1).

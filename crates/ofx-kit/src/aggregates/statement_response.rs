@@ -1,3 +1,8 @@
+//! Bank statement response aggregate (`STMTRS`).
+//!
+//! This is the primary typed result for bank statements, combining account,
+//! period, transactions, balances, and optional marketing information.
+
 use crate::types::CurrencyCode;
 
 use super::available_balance::AvailableBalance;

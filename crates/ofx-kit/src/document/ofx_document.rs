@@ -1,3 +1,8 @@
+//! Top-level typed OFX document.
+//!
+//! This aggregate joins the parsed header, sign-on response, and the supported
+//! banking, credit-card, and investment message sets.
+
 use crate::header::OfxHeader;
 
 use super::banking_message_set::BankingMessageSet;

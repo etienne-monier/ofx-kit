@@ -1,3 +1,5 @@
+//! OFX protocol-version value and validation.
+
 use core::fmt;
 use core::str::FromStr;
 

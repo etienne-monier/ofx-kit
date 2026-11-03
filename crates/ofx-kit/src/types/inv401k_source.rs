@@ -1,3 +1,5 @@
+//! OFX 401(k) transaction-source enumeration.
+
 use core::fmt;
 use core::str::FromStr;
 

@@ -1,3 +1,5 @@
+//! Validated identifier of a corrected OFX transaction.
+
 use super::validated_string::validated_string;
 
 validated_string!(

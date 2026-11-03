@@ -1,3 +1,8 @@
+//! Shared validation primitive for bounded, non-empty OFX identifiers.
+//!
+//! This module is private to [`super`] and supplies the common implementation
+//! used by public identifier newtypes.
+
 /// Macro to generate a validated string newtype with max length constraint.
 ///
 /// Each generated type:

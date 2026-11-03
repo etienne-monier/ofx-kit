@@ -1,3 +1,5 @@
+//! Errors produced while parsing OFX protocol headers.
+
 use core::fmt;
 
 /// Error returned when parsing an OFX header.

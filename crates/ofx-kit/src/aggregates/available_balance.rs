@@ -1,3 +1,7 @@
+//! Available-balance aggregate from a bank or credit-card statement.
+//!
+//! This module models the amount and timestamp reported by `AVAILBAL`.
+
 use crate::types::{OfxAmount, OfxDateTime};
 
 /// An available balance (AVAILBAL) -- the amount available for withdrawal.

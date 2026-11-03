@@ -1,3 +1,8 @@
+//! OFX date-time value and parser.
+//!
+//! The parser handles OFX's right-truncated date/time syntax and optional
+//! bracketed GMT offset. It produces a `time::OffsetDateTime`.
+
 use core::fmt;
 use core::str::FromStr;
 

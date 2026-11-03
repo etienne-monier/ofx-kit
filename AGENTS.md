@@ -26,21 +26,24 @@ and cargo-deny. Run the relevant checks before claiming validation.
 
 ## Architecture
 
-- `crates/ofx-kit/src/lib.rs` re-exports `parse` from `crates/ofx-kit/src/parser.rs`.
+- `crates/ofx-kit/src/lib.rs` re-exports the public parse APIs from the private
+  `crates/ofx-kit/src/parser.rs` module.
 - Parsing flows through `header::parse_header`, then normalizes OFX 1.x with
-  `crates/ofx-kit/src/sgml.rs`, and parses the resulting XML with `quick-xml` through
+  `crates/ofx-kit/src/sgml/{tokenizer,normalize}.rs`, and parses the resulting XML with `quick-xml` through
   `crates/ofx-kit/src/xml/reader.rs`.
 - `crates/ofx-kit/src/parser.rs` is a hand-written aggregate parser. `crates/ofx-kit/src/aggregates/` holds
   composite data, `crates/ofx-kit/src/types/` holds validated primitives/enums, and
   `crates/ofx-kit/src/document/` holds top-level message sets.
-- The library currently performs no I/O and accepts UTF-8 `&str` input only.
-  Encoding support (`parse_bytes`) is planned; keep file I/O in the future CLI.
+- The library currently performs no I/O. `parse(&str)` accepts UTF-8 text and
+  `parse_bytes(&[u8])` decodes supported source encodings; keep file I/O in the
+  CLI.
 
 ## SGML and data hazards
 
 - OFX 1.x omits closing tags. When adding an aggregate or leaf, update the
-  tables in `crates/ofx-kit/src/sgml.rs`: `aggregate_tags`, `is_valid_child`, and
-  `is_valid_leaf_parent`.
+  declarative hierarchy in `crates/ofx-kit/src/schema.rs` (`AGGREGATES` and its
+  child/leaf relationships). The SGML normalizer in
+  `crates/ofx-kit/src/sgml/normalize.rs` uses this schema to infer closing tags.
 - A wrong SGML relationship can close a parent early and drop an entire
   subtree. `ACCTKEY` inside `BANKACCTFROM` is a regression case.
 - Preserve text as UTF-8 slices. Byte-by-byte `char` conversion breaks accented

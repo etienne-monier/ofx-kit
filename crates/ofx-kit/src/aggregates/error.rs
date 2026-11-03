@@ -1,3 +1,8 @@
+//! Errors used while constructing typed OFX aggregates.
+//!
+//! These errors are retained as a separate domain type so aggregate validation
+//! can evolve independently from XML and header errors.
+
 use core::fmt;
 
 /// Error type for OFX aggregate parsing failures.

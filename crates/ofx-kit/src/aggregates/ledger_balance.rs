@@ -1,3 +1,5 @@
+//! Ledger-balance aggregate from a statement response.
+
 use crate::types::{OfxAmount, OfxDateTime};
 
 /// A ledger balance (LEDGERBAL) -- the balance in the account per the FI's records.

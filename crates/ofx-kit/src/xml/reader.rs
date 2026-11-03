@@ -1,3 +1,9 @@
+//! OFX-aware wrapper around `quick_xml::Reader`.
+//!
+//! The reader owns event traversal, element paths, source positions, unknown
+//! element policy, and XML-level diagnostics. Typed aggregate construction lives
+//! in the private parser module.
+
 use quick_xml::Reader;
 use quick_xml::events::Event;
 

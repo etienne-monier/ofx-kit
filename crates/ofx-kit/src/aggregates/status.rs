@@ -1,3 +1,5 @@
+//! OFX status aggregate shared by sign-on and transaction responses.
+
 use crate::types::Severity;
 
 /// An OFX STATUS aggregate containing a status code, severity, and optional message.

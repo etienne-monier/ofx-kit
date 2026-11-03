@@ -1,3 +1,7 @@
+//! Currency-conversion aggregates embedded in statement transactions.
+//!
+//! `CURRENCY` and `ORIGCURRENCY` carry a currency code and conversion rate.
+
 use crate::types::{CurrencyCode, OfxAmount};
 
 /// Currency information attached to a transaction or balance.

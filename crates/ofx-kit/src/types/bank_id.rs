@@ -1,3 +1,5 @@
+//! Validated financial-institution bank identifier.
+
 use super::validated_string::validated_string;
 
 validated_string!(

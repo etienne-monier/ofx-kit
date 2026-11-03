@@ -1,3 +1,5 @@
+//! Investment-message response set for the supported investment subset.
+
 use crate::aggregates::{InvStatementResponse, TransactionWrapper};
 
 /// The investment message set response (INVSTMTMSGSRSV1).

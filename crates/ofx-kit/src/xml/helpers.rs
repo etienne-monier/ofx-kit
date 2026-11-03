@@ -1,3 +1,8 @@
+//! Small XML aggregate helpers retained for parser-side reuse and tests.
+//!
+//! These helpers operate on already-collected child text and do not perform
+//! document I/O or SGML normalization.
+
 use core::str::FromStr;
 
 use super::{XmlError, XmlErrorKind};

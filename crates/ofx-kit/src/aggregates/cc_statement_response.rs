@@ -1,3 +1,8 @@
+//! Credit-card statement response aggregate.
+//!
+//! This is the credit-card counterpart of the bank `STMTRS` aggregate and reuses
+//! the common transaction and balance models where the OFX structures match.
+
 use crate::types::CurrencyCode;
 
 use super::available_balance::AvailableBalance;

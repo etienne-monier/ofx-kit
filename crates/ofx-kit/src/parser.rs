@@ -1,3 +1,10 @@
+//! Typed OFX document parser and public parsing options.
+//!
+//! Parsing is a hand-written recursive descent over [`crate::xml::OfxReader`].
+//! OFX 1.x bodies are normalized by [`crate::sgml`] before the same typed
+//! aggregate parser is used. This module intentionally supports the documented
+//! bank-statement subset plus the existing credit-card and investment subsets.
+
 use quick_xml::events::Event;
 
 use crate::aggregates::{

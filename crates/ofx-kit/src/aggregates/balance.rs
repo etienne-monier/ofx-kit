@@ -1,3 +1,7 @@
+//! Additional statement balance entries from the `BALLIST` aggregate.
+//!
+//! These entries retain their OFX balance type and optional timestamp/currency metadata.
+
 use crate::types::{BalanceType, CurrencyCode, OfxAmount, OfxDateTime};
 
 /// A generic balance record (BAL) from the OFX BALLIST.

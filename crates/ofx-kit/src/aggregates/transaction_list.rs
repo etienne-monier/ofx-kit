@@ -1,3 +1,5 @@
+//! Statement transaction-list aggregate containing a reporting period and transactions.
+
 use crate::types::OfxDateTime;
 
 use super::statement_transaction::StatementTransaction;

@@ -1,3 +1,8 @@
+//! Investment-account identification aggregate.
+//!
+//! The current investment support uses this account identity together with the
+//! banking transactions found inside `INVBANKTRAN`.
+
 use crate::types::AccountId;
 
 /// An investment account identifier (INVACCTFROM).

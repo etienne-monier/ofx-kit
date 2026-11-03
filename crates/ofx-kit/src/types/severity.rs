@@ -1,3 +1,5 @@
+//! OFX status-severity enumeration.
+
 use core::fmt;
 use core::str::FromStr;
 

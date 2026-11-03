@@ -1,3 +1,5 @@
+//! Validated bank branch identifier.
+
 use super::validated_string::validated_string;
 
 validated_string!(

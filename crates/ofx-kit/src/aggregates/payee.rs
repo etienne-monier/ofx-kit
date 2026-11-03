@@ -1,3 +1,8 @@
+//! Structured payee information embedded in a statement transaction.
+//!
+//! The model follows the currently supported `PAYEE` fields and is constructed
+//! only after the parser has validated the required fields it supports.
+
 /// A payee aggregate from an OFX transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payee {

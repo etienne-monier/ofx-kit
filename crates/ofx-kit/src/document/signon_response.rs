@@ -1,3 +1,5 @@
+//! Sign-on response aggregate (`SONRS`).
+
 use crate::aggregates::Status;
 use crate::types::OfxDateTime;
 

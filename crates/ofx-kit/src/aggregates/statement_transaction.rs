@@ -1,3 +1,8 @@
+//! Typed banking transaction aggregate (`STMTTRN`) and its builder.
+//!
+//! Financial amounts use [`crate::types::OfxAmount`] rather than floating-point
+//! values. Required OFX fields are checked when the builder is finalized.
+
 use crate::types::{
     CheckNumber, CorrectionAction, CorrectionId, FitId, Inv401kSource, OfxAmount, OfxDateTime,
     ServerTransactionId, TransactionType,

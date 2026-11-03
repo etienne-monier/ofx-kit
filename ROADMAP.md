@@ -45,6 +45,19 @@ The future implementation must keep two paths separate:
   but not every XML error or synthesized SGML close has a source position yet.
 - The documentation site is only partially populated; several planned
   tutorials, how-to guides, and reference pages are still missing.
+- The typed XML reader does not yet preserve `CDATA` contents and does not
+  dispatch `quick-xml` `Empty` events like ordinary elements.
+- `PAYEE` parsing currently requires fields that the OFX specification permits
+  to be absent; the public payee model should eventually represent those fields
+  as optional.
+- Malformed bracketed OFX datetime input can reach an invalid byte slice in the
+  datetime parser; parsing library inputs must never panic.
+- Strict parsing currently applies structural SGML normalization warnings more
+  consistently than all XML-path warnings. Its contract should be made
+  explicit and covered by tests.
+- The schema validates SGML normalization and unknown-element handling, while
+  typed XML dispatch remains hand-written in `parser.rs`; the two supported
+  subsets should eventually have a coverage check to prevent drift.
 
 ## Roadmap
 

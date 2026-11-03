@@ -1,3 +1,8 @@
+//! Top-level errors returned by OFX decoding and parsing APIs.
+//!
+//! The variants preserve the boundary between header, XML, aggregate, and
+//! strict-diagnostics failures.
+
 use crate::aggregates::error::AggregateError;
 use crate::diagnostics::ParseWarning;
 use crate::header::HeaderError;

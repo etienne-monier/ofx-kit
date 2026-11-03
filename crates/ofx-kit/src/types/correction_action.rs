@@ -1,3 +1,5 @@
+//! OFX transaction-correction action enumeration.
+
 use core::fmt;
 use core::str::FromStr;
 

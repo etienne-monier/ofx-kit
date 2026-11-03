@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
 #![allow(clippy::result_large_err)]
 
+//! Command-line interface for inspecting, validating, decoding, and converting OFX files.
+//!
+//! The CLI owns filesystem I/O and presentation; parsing and conversion remain
+//! in the `ofx-kit` library.
+
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;

@@ -1,3 +1,5 @@
+//! OFX boolean value and its text representation.
+
 use core::fmt;
 use core::str::FromStr;
 

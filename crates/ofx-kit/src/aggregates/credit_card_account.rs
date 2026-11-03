@@ -1,3 +1,5 @@
+//! Credit-card account aggregate used by credit-card statements and transfers.
+
 use crate::types::AccountId;
 
 /// A credit card account identifier (CCACCTFROM / CCACCTTO).

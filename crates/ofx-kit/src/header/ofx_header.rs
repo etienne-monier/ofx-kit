@@ -1,3 +1,7 @@
+//! OFX header representation and parsing for XML and legacy SGML headers.
+//!
+//! Header parsing stops at the body and does not parse document aggregates.
+
 use super::error::HeaderError;
 use super::ofx_version::OfxVersion;
 use super::security_level::SecurityLevel;

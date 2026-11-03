@@ -1,3 +1,5 @@
+//! Credit-card message response set.
+
 use crate::aggregates::{CcStatementResponse, TransactionWrapper};
 
 /// The credit card message set response (CREDITCARDMSGSRSV1).

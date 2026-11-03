@@ -1,3 +1,8 @@
+//! Generic OFX transaction-response wrapper.
+//!
+//! The wrapper contains the request identifier, response status, optional client
+//! cookie, and an optional typed response aggregate.
+
 use super::status::Status;
 
 /// A transaction wrapper (e.g., STMTTRNRS, CCSTMTTRNRS) that wraps a specific

@@ -1,3 +1,8 @@
+//! Exact monetary amount type for OFX financial values.
+//!
+//! Values are backed by `rust_decimal::Decimal`; floating-point values are not
+//! used for financial data.
+
 use core::fmt;
 use core::ops::{Add, Neg, Sub};
 use core::str::FromStr;

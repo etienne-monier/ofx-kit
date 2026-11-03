@@ -1,3 +1,8 @@
+//! Bank-account aggregates used by statement responses and transfer destinations.
+//!
+//! The account identifier and account type are required by the supported OFX model;
+//! branch and account-key fields are optional because real-world files omit them.
+
 use crate::types::{AccountId, AccountType, BankId, BranchId};
 
 /// A bank account identifier (BANKACCTFROM / BANKACCTTO).

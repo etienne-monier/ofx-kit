@@ -1,3 +1,8 @@
+//! Investment statement response aggregate.
+//!
+//! This intentionally models the supported subset of investment statements;
+//! investment-specific trade aggregates are not exposed by the current parser.
+
 use crate::types::CurrencyCode;
 
 use super::investment_account::InvestmentAccount;

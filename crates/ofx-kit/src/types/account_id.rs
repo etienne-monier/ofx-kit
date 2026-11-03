@@ -1,3 +1,5 @@
+//! Validated OFX account identifier.
+
 use super::validated_string::validated_string;
 
 validated_string!(

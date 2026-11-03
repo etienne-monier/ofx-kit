@@ -1,3 +1,5 @@
+//! OFX statement-transaction type enumeration.
+
 use core::fmt;
 use core::str::FromStr;
 
