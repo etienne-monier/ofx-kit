@@ -11,9 +11,9 @@ use super::signon_response::SignonResponse;
 pub struct OfxDocument {
     header: OfxHeader,
     signon: SignonResponse,
-    banking: Option<BankingMessageSet>,
-    credit_card: Option<CreditCardMessageSet>,
-    investment: Option<InvestmentMessageSet>,
+    banking: Vec<BankingMessageSet>,
+    credit_card: Vec<CreditCardMessageSet>,
+    investment: Vec<InvestmentMessageSet>,
 }
 
 impl OfxDocument {
@@ -23,30 +23,30 @@ impl OfxDocument {
         Self {
             header,
             signon,
-            banking: None,
-            credit_card: None,
-            investment: None,
+            banking: Vec::new(),
+            credit_card: Vec::new(),
+            investment: Vec::new(),
         }
     }
 
     /// Sets the banking message set.
     #[must_use]
     pub fn with_banking(mut self, banking: BankingMessageSet) -> Self {
-        self.banking = Some(banking);
+        self.banking.push(banking);
         self
     }
 
     /// Sets the credit card message set.
     #[must_use]
     pub fn with_credit_card(mut self, cc: CreditCardMessageSet) -> Self {
-        self.credit_card = Some(cc);
+        self.credit_card.push(cc);
         self
     }
 
     /// Sets the investment message set.
     #[must_use]
     pub fn with_investment(mut self, investment: InvestmentMessageSet) -> Self {
-        self.investment = Some(investment);
+        self.investment.push(investment);
         self
     }
 
@@ -64,19 +64,37 @@ impl OfxDocument {
 
     /// Returns the banking message set, if present.
     #[must_use]
-    pub const fn banking(&self) -> Option<&BankingMessageSet> {
-        self.banking.as_ref()
+    pub fn banking(&self) -> Option<&BankingMessageSet> {
+        self.banking.first()
+    }
+
+    /// Returns all banking message sets.
+    #[must_use]
+    pub fn bankings(&self) -> &[BankingMessageSet] {
+        &self.banking
     }
 
     /// Returns the credit card message set, if present.
     #[must_use]
-    pub const fn credit_card(&self) -> Option<&CreditCardMessageSet> {
-        self.credit_card.as_ref()
+    pub fn credit_card(&self) -> Option<&CreditCardMessageSet> {
+        self.credit_card.first()
+    }
+
+    /// Returns all credit-card message sets.
+    #[must_use]
+    pub fn credit_cards(&self) -> &[CreditCardMessageSet] {
+        &self.credit_card
     }
 
     /// Returns the investment message set, if present.
     #[must_use]
-    pub const fn investment(&self) -> Option<&InvestmentMessageSet> {
-        self.investment.as_ref()
+    pub fn investment(&self) -> Option<&InvestmentMessageSet> {
+        self.investment.first()
+    }
+
+    /// Returns all investment message sets.
+    #[must_use]
+    pub fn investments(&self) -> &[InvestmentMessageSet] {
+        &self.investment
     }
 }

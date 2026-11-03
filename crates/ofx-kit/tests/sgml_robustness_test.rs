@@ -5,7 +5,10 @@
 //! line endings, and aggregates that are optional in the schema.
 
 use ofx_kit::types::{AccountType, TransactionType};
-use ofx_kit::{ParseWarning, parse, parse_with_warnings};
+use ofx_kit::{
+    ParseOptions, ParseWarning, ParseWarningKind, UnknownElementPolicy, parse, parse_with_options,
+    parse_with_warnings,
+};
 
 const EDGE_CASES: &str = include_str!("fixtures/sgml_edge_cases.ofx");
 const CRLF: &str = include_str!("fixtures/sgml_crlf.ofx");
@@ -70,7 +73,11 @@ fn reports_unknown_leaves_with_their_path() {
         .warnings
         .iter()
         .find_map(|warning| match warning {
-            ParseWarning::UnknownElement { name, path } if name == "UNKNOWNLEAF" => Some(path),
+            ParseWarning {
+                kind: ParseWarningKind::UnknownElement { name },
+                path,
+                ..
+            } if name == "UNKNOWNLEAF" => Some(path),
             _ => None,
         })
         .expect("unknown leaf should be reported");
@@ -79,6 +86,35 @@ fn reports_unknown_leaves_with_their_path() {
         unknown.to_string(),
         "OFX/BANKMSGSRSV1/STMTTRNRS/STMTRS/BANKTRANLIST/STMTTRN/UNKNOWNLEAF"
     );
+    assert!(unknown_position(parsed.warnings.as_slice()).is_some());
+}
+
+fn unknown_position(warnings: &[ParseWarning]) -> Option<ofx_kit::SourcePosition> {
+    warnings.iter().find_map(|warning| match warning.kind() {
+        ParseWarningKind::UnknownElement { name } if name == "UNKNOWNLEAF" => warning.position(),
+        _ => None,
+    })
+}
+
+#[test]
+fn unknown_element_policy_can_ignore_or_reject() {
+    let ignored = parse_with_options(
+        EDGE_CASES,
+        &ParseOptions::default().with_unknown_elements(UnknownElementPolicy::Ignore),
+    )
+    .expect("ignore policy should parse");
+    assert!(
+        !ignored
+            .warnings
+            .iter()
+            .any(|warning| matches!(warning.kind(), ParseWarningKind::UnknownElement { .. }))
+    );
+
+    let rejected = parse_with_options(
+        EDGE_CASES,
+        &ParseOptions::default().with_unknown_elements(UnknownElementPolicy::Error),
+    );
+    assert!(matches!(rejected, Err(ofx_kit::OfxError::Xml(_))));
 }
 
 #[test]
@@ -89,7 +125,11 @@ fn reports_raw_ampersands_and_unknown_entities() {
         .warnings
         .iter()
         .filter_map(|warning| match warning {
-            ParseWarning::RawAmpersand { path } => Some(path.to_string()),
+            ParseWarning {
+                kind: ParseWarningKind::RawAmpersand,
+                path,
+                ..
+            } => Some(path.to_string()),
             _ => None,
         })
         .collect();
@@ -102,7 +142,11 @@ fn reports_raw_ampersands_and_unknown_entities() {
         .warnings
         .iter()
         .find_map(|warning| match warning {
-            ParseWarning::UnknownEntity { name, path } if name == "nbsp" => Some(path.to_string()),
+            ParseWarning {
+                kind: ParseWarningKind::UnknownEntity { name },
+                path,
+                ..
+            } if name == "nbsp" => Some(path.to_string()),
             _ => None,
         })
         .expect("unknown entity should be reported");

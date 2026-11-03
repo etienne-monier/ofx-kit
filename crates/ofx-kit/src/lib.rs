@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
+// Structured parse errors intentionally carry their diagnostic context.
+#![allow(clippy::result_large_err)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 //! `ofx-kit` -- A Rust library for parsing Open Financial Exchange (OFX) documents.
 //!
 //! This library provides a pure functional parser for OFX 1.x and 2.x documents.
-//! It takes string input and produces typed data structures with no I/O.
+//! It accepts decoded strings or raw bytes and produces typed data structures
+//! with no I/O.
 //!
 //! # Usage
 //!
@@ -44,10 +47,11 @@ pub use conversion::{
     ConversionError, ConversionOptions, ConversionWarning, ConvertedSource, convert_bytes,
     convert_str,
 };
-pub use diagnostics::{ElementPath, ParseWarning};
+pub use diagnostics::{ElementPath, ParseWarning, ParseWarningKind, SourcePosition};
 pub use document::OfxDocument;
 pub use encoding::{DecodeWarning, DecodedSource, DetectedEncoding, decode};
 pub use error::OfxError;
 pub use parser::{
-    ParsedDocument, parse, parse_bytes, parse_bytes_with_warnings, parse_with_warnings,
+    ParseOptions, ParsedDocument, UnknownElementPolicy, parse, parse_bytes,
+    parse_bytes_with_options, parse_bytes_with_warnings, parse_with_options, parse_with_warnings,
 };

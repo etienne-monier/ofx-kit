@@ -264,3 +264,6 @@ ofx decode statement.ofx > statement-utf8.ofx
 
 See the [CLI reference](https://etienne-monier.github.io/ofx-kit/reference/cli/)
 for filters, JSON output, and exit codes.
+
+See the [supported OFX subset](https://etienne-monier.github.io/ofx-kit/reference/supported-ofx-subset/)
+for the exact message sets and statement fields covered by the typed model.

@@ -9,18 +9,70 @@ use crate::diagnostics::ParseWarning;
 use crate::document::{
     BankingMessageSet, CreditCardMessageSet, InvestmentMessageSet, OfxDocument, SignonResponse,
 };
+use crate::encoding::DecodeWarning;
 use crate::error::OfxError;
 use crate::header::{self, OfxHeader};
 use crate::xml::{OfxReader, XmlError};
 
 /// A parsed OFX document together with the non-fatal warnings collected while
 /// parsing it.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedDocument {
     /// The structured OFX document.
     pub document: OfxDocument,
     /// Non-fatal conditions encountered while parsing.
     pub warnings: Vec<ParseWarning>,
+    /// Warnings emitted while decoding a byte-oriented source.
+    pub decode_warnings: Vec<DecodeWarning>,
+}
+
+/// Controls how the parser handles elements outside the supported subset.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnknownElementPolicy {
+    /// Skip unknown elements without reporting them.
+    Ignore,
+    /// Skip unknown elements and return a warning.
+    #[default]
+    Warn,
+    /// Return an error when an unknown element is encountered.
+    Error,
+}
+
+/// Options controlling typed OFX parsing.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseOptions {
+    /// Policy applied to elements outside the supported subset.
+    pub unknown_elements: UnknownElementPolicy,
+    /// Turn structural SGML diagnostics into parsing errors.
+    pub strict: bool,
+}
+
+impl Default for ParseOptions {
+    fn default() -> Self {
+        Self {
+            unknown_elements: UnknownElementPolicy::Warn,
+            strict: false,
+        }
+    }
+}
+
+impl ParseOptions {
+    /// Sets the unknown-element policy.
+    #[must_use]
+    pub const fn with_unknown_elements(mut self, policy: UnknownElementPolicy) -> Self {
+        self.unknown_elements = policy;
+        self
+    }
+
+    /// Enables or disables strict structural parsing.
+    #[must_use]
+    pub const fn with_strict(mut self, strict: bool) -> Self {
+        self.strict = strict;
+        self
+    }
 }
 
 /// Parses a complete OFX document from a string.
@@ -46,6 +98,11 @@ pub fn parse(input: &str) -> Result<OfxDocument, OfxError> {
 /// Returns `OfxError` if the header is missing or malformed, the XML is invalid,
 /// or required OFX elements are missing.
 pub fn parse_with_warnings(input: &str) -> Result<ParsedDocument, OfxError> {
+    parse_with_options(input, &ParseOptions::default())
+}
+
+/// Parses an OFX document with explicit parser options and returns warnings.
+pub fn parse_with_options(input: &str, options: &ParseOptions) -> Result<ParsedDocument, OfxError> {
     let (ofx_header, xml_body) = header::parse_header(input)?;
     let xml_body = xml_body.trim();
 
@@ -53,13 +110,22 @@ pub fn parse_with_warnings(input: &str) -> Result<ParsedDocument, OfxError> {
     // the body to well-formed XML before parsing.
     if ofx_header.version().major() < 2 {
         let normalized = crate::sgml::normalize_sgml_to_xml_with_warnings(xml_body);
-        let (document, mut xml_warnings) = parse_ofx_body(&normalized.xml, ofx_header)?;
+        reject_strict_warnings(&normalized.warnings, options)?;
+        let (document, mut xml_warnings) = parse_ofx_body(&normalized.xml, ofx_header, options)?;
         let mut warnings = normalized.warnings;
         warnings.append(&mut xml_warnings);
-        Ok(ParsedDocument { document, warnings })
+        Ok(ParsedDocument {
+            document,
+            warnings,
+            decode_warnings: Vec::new(),
+        })
     } else {
-        let (document, warnings) = parse_ofx_body(xml_body, ofx_header)?;
-        Ok(ParsedDocument { document, warnings })
+        let (document, warnings) = parse_ofx_body(xml_body, ofx_header, options)?;
+        Ok(ParsedDocument {
+            document,
+            warnings,
+            decode_warnings: Vec::new(),
+        })
     }
 }
 
@@ -75,6 +141,14 @@ pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
 ///
 /// Decoding warnings are available separately through [`crate::decode`].
 pub fn parse_bytes_with_warnings(input: &[u8]) -> Result<ParsedDocument, OfxError> {
+    parse_bytes_with_options(input, &ParseOptions::default())
+}
+
+/// Decodes and parses an OFX document with explicit parser options.
+pub fn parse_bytes_with_options(
+    input: &[u8],
+    options: &ParseOptions,
+) -> Result<ParsedDocument, OfxError> {
     if crate::encoding::is_compressed(input) {
         return Err(OfxError::UnsupportedCompression);
     }
@@ -86,7 +160,31 @@ pub fn parse_bytes_with_warnings(input: &[u8]) -> Result<ParsedDocument, OfxErro
     {
         return Err(OfxError::UnsupportedCompression);
     }
-    parse_with_warnings(&decoded.text)
+    let mut parsed = parse_with_options(&decoded.text, options)?;
+    parsed.decode_warnings = decoded.warnings;
+    Ok(parsed)
+}
+
+fn reject_strict_warnings(
+    warnings: &[ParseWarning],
+    options: &ParseOptions,
+) -> Result<(), OfxError> {
+    if !options.strict {
+        return Ok(());
+    }
+    if let Some(warning) = warnings.iter().find(|warning| {
+        matches!(
+            warning.kind(),
+            crate::diagnostics::ParseWarningKind::MisplacedElement { .. }
+                | crate::diagnostics::ParseWarningKind::UnmatchedCloseTag { .. }
+                | crate::diagnostics::ParseWarningKind::UnclosedElement { .. }
+                | crate::diagnostics::ParseWarningKind::AmbiguousUnknownElement { .. }
+                | crate::diagnostics::ParseWarningKind::MalformedSgml { .. }
+        )
+    }) {
+        return Err(OfxError::StrictViolation(warning.clone()));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -138,12 +236,13 @@ fn parse_next_as<T: core::str::FromStr>(
 fn parse_ofx_body(
     xml: &str,
     header: OfxHeader,
+    options: &ParseOptions,
 ) -> Result<(OfxDocument, Vec<ParseWarning>), OfxError> {
-    let mut reader = OfxReader::new(xml);
+    let mut reader = OfxReader::with_options(xml, options);
     let mut signon: Option<SignonResponse> = None;
-    let mut banking: Option<BankingMessageSet> = None;
-    let mut credit_card: Option<CreditCardMessageSet> = None;
-    let mut investment: Option<InvestmentMessageSet> = None;
+    let mut banking = Vec::new();
+    let mut credit_card = Vec::new();
+    let mut investment = Vec::new();
 
     // Find and enter the <OFX> root element
     loop {
@@ -166,13 +265,13 @@ fn parse_ofx_body(
                         signon = Some(parse_signon_message_set(&mut reader)?);
                     }
                     "BANKMSGSRSV1" => {
-                        banking = Some(parse_banking_message_set(&mut reader)?);
+                        banking.push(parse_banking_message_set(&mut reader)?);
                     }
                     "CREDITCARDMSGSRSV1" => {
-                        credit_card = Some(parse_cc_message_set(&mut reader)?);
+                        credit_card.push(parse_cc_message_set(&mut reader)?);
                     }
                     "INVSTMTMSGSRSV1" => {
-                        investment = Some(parse_investment_message_set(&mut reader)?);
+                        investment.push(parse_investment_message_set(&mut reader)?);
                     }
                     _ => {
                         reader.skip_element(&name)?;
@@ -188,13 +287,13 @@ fn parse_ofx_body(
     let signon = signon.ok_or_else(|| reader.missing_in("OFX", "SIGNONMSGSRSV1"))?;
 
     let mut doc = OfxDocument::new(header, signon);
-    if let Some(b) = banking {
+    for b in banking {
         doc = doc.with_banking(b);
     }
-    if let Some(cc) = credit_card {
+    for cc in credit_card {
         doc = doc.with_credit_card(cc);
     }
-    if let Some(inv) = investment {
+    for inv in investment {
         doc = doc.with_investment(inv);
     }
 

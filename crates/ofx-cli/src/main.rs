@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(clippy::result_large_err)]
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -10,7 +11,8 @@ use ofx_kit::header::OfxVersion;
 use ofx_kit::header::parse_header;
 use ofx_kit::xml::{XmlError, XmlErrorKind};
 use ofx_kit::{
-    ConversionOptions, DecodeWarning, ElementPath, OfxError, convert_bytes, decode, parse_bytes,
+    ConversionOptions, DecodeWarning, ElementPath, OfxError, convert_bytes, decode,
+    parse_with_options,
 };
 use serde::Serialize;
 use time::Date;
@@ -132,7 +134,8 @@ struct Loaded {
 fn load(path: &PathBuf) -> Result<Loaded, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let decoded = decode(&bytes);
-    let document = parse_bytes(&bytes);
+    let document =
+        parse_with_options(&decoded.text, &Default::default()).map(|parsed| parsed.document);
     Ok(Loaded { decoded, document })
 }
 
@@ -392,8 +395,8 @@ fn report(loaded: &Loaded, args: &InspectArgs) -> Result<ReportJson, OfxError> {
     }
     let header = document.header();
     let mut statements = document
-        .banking()
-        .into_iter()
+        .bankings()
+        .iter()
         .flat_map(|set| set.statement_responses())
         .filter_map(|wrapper| {
             let response = wrapper.response()?;
@@ -436,8 +439,8 @@ fn report(loaded: &Loaded, args: &InspectArgs) -> Result<ReportJson, OfxError> {
         .collect::<Vec<_>>();
     statements.extend(
         document
-            .credit_card()
-            .into_iter()
+            .credit_cards()
+            .iter()
             .flat_map(|set| set.statement_responses())
             .filter_map(|wrapper| {
                 let response = wrapper.response()?;
@@ -477,8 +480,8 @@ fn report(loaded: &Loaded, args: &InspectArgs) -> Result<ReportJson, OfxError> {
     );
     statements.extend(
         document
-            .investment()
-            .into_iter()
+            .investments()
+            .iter()
             .flat_map(|set| set.statement_responses())
             .filter_map(|wrapper| {
                 let response = wrapper.response()?;
@@ -704,31 +707,37 @@ fn validate(args: ValidateArgs, no_color: bool) -> u8 {
     match &loaded.document {
         Ok(document) => {
             let statements = document
-                .banking()
-                .map_or(0, |v| v.statement_responses().len())
+                .bankings()
+                .iter()
+                .map(|v| v.statement_responses().len())
+                .sum::<usize>()
                 + document
-                    .credit_card()
-                    .map_or(0, |v| v.statement_responses().len())
+                    .credit_cards()
+                    .iter()
+                    .map(|v| v.statement_responses().len())
+                    .sum::<usize>()
                 + document
-                    .investment()
-                    .map_or(0, |v| v.statement_responses().len());
+                    .investments()
+                    .iter()
+                    .map(|v| v.statement_responses().len())
+                    .sum::<usize>();
             let transactions = document
-                .banking()
-                .into_iter()
+                .bankings()
+                .iter()
                 .flat_map(|v| v.statement_responses())
                 .filter_map(|v| v.response()?.transaction_list())
                 .map(|v| v.len())
                 .sum::<usize>()
                 + document
-                    .credit_card()
-                    .into_iter()
+                    .credit_cards()
+                    .iter()
                     .flat_map(|v| v.statement_responses())
                     .filter_map(|v| v.response()?.transaction_list())
                     .map(|v| v.len())
                     .sum::<usize>()
                 + document
-                    .investment()
-                    .into_iter()
+                    .investments()
+                    .iter()
                     .flat_map(|v| v.statement_responses())
                     .filter_map(|v| v.response()?.transaction_list())
                     .map(|v| v.len())

@@ -5,7 +5,7 @@ pub mod reader;
 
 use core::fmt;
 
-use crate::diagnostics::ElementPath;
+use crate::diagnostics::{ElementPath, SourcePosition};
 
 pub use reader::OfxReader;
 
@@ -19,6 +19,8 @@ pub enum XmlErrorKind {
     UnexpectedElement { expected: String, found: String },
     /// A required element was missing from its parent.
     MissingElement { parent: String, element: String },
+    /// An element outside the supported OFX subset was encountered.
+    UnknownElement { name: String },
     /// An element contained invalid text content.
     InvalidContent {
         element: String,
@@ -34,13 +36,18 @@ pub enum XmlErrorKind {
 pub struct XmlError {
     kind: XmlErrorKind,
     path: ElementPath,
+    position: Option<SourcePosition>,
 }
 
 impl XmlError {
     /// Creates an XML error with its location.
     #[must_use]
     pub fn new(kind: XmlErrorKind, path: ElementPath) -> Self {
-        Self { kind, path }
+        Self {
+            kind,
+            path,
+            position: None,
+        }
     }
 
     /// Returns the error kind.
@@ -53,6 +60,19 @@ impl XmlError {
     #[must_use]
     pub fn path(&self) -> &ElementPath {
         &self.path
+    }
+
+    /// Returns the source position, if known.
+    #[must_use]
+    pub const fn position(&self) -> Option<SourcePosition> {
+        self.position
+    }
+
+    /// Adds source-position information to this error.
+    #[must_use]
+    pub fn with_position(mut self, position: SourcePosition) -> Self {
+        self.position = Some(position);
+        self
     }
 
     pub(crate) fn malformed(path: ElementPath, message: impl Into<String>) -> Self {
@@ -121,6 +141,7 @@ impl fmt::Display for XmlErrorKind {
             Self::MissingElement { parent, element } => {
                 write!(f, "missing required element <{element}> in <{parent}>")
             }
+            Self::UnknownElement { name } => write!(f, "unknown element <{name}>"),
             Self::InvalidContent {
                 element,
                 value,

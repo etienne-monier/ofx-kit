@@ -18,7 +18,7 @@
 //! one. Unknown elements are preserved and, when they contain child elements,
 //! are only closed by an explicit closing tag or by the end of the input.
 
-use crate::diagnostics::{ElementPath, ParseWarning};
+use crate::diagnostics::{ElementPath, ParseWarning, ParseWarningKind, position_at};
 use crate::schema::{NodeKind, Schema, schema};
 
 use super::tokenizer::{EntityKind, Token, TokenizeWarning, Tokenizer};
@@ -90,37 +90,52 @@ pub(crate) fn normalize_sgml_to_xml_with_warnings(input: &str) -> NormalizedSgml
         match token {
             Token::Text { text, .. } => push_escaped_text(&mut output, text),
             Token::Entity {
-                raw, name, kind, ..
+                raw,
+                name,
+                kind,
+                span,
             } => match kind {
                 EntityKind::Xml | EntityKind::Numeric => output.push_str(raw),
                 EntityKind::Unknown => {
                     output.push_str("&amp;");
                     output.push_str(name);
                     output.push(';');
-                    warnings.push(ParseWarning::UnknownEntity {
-                        name: (*name).to_owned(),
-                        path: warning_path.clone(),
-                    });
+                    warnings.push(ParseWarning::at(
+                        ParseWarningKind::UnknownEntity {
+                            name: (*name).to_owned(),
+                        },
+                        warning_path.clone(),
+                        position_at(input, span.start),
+                    ));
                 }
                 EntityKind::Raw => {
                     output.push_str("&amp;");
-                    warnings.push(ParseWarning::RawAmpersand {
-                        path: warning_path.clone(),
-                    });
+                    warnings.push(ParseWarning::at(
+                        ParseWarningKind::RawAmpersand,
+                        warning_path.clone(),
+                        position_at(input, span.start),
+                    ));
                 }
             },
             Token::Comment { raw, .. }
             | Token::ProcessingInstruction { raw, .. }
             | Token::Declaration { raw, .. } => output.push_str(raw),
             Token::Malformed { raw, .. } => push_escaped_text(&mut output, raw),
-            Token::CloseTag { name, .. } => {
-                handle_close_tag(name, &mut stack, &mut output, &mut warnings, &warning_path);
+            Token::CloseTag { name, span } => {
+                handle_close_tag(
+                    name,
+                    &mut stack,
+                    &mut output,
+                    &mut warnings,
+                    &warning_path,
+                    position_at(input, span.start),
+                );
             }
             Token::OpenTag {
                 name,
                 raw,
                 self_closing,
-                ..
+                span,
             } => {
                 handle_open_tag(
                     name,
@@ -132,6 +147,7 @@ pub(crate) fn normalize_sgml_to_xml_with_warnings(input: &str) -> NormalizedSgml
                     &mut output,
                     &mut warnings,
                     &warning_path,
+                    position_at(input, span.start),
                 );
             }
         }
@@ -141,7 +157,7 @@ pub(crate) fn normalize_sgml_to_xml_with_warnings(input: &str) -> NormalizedSgml
             .copied()
             .unwrap_or(tokenizer_warnings.len());
         for warning in &tokenizer_warnings[warning_starts[index]..warning_end] {
-            warnings.push(malformed_sgml(warning, warning_path.clone()));
+            warnings.push(malformed_sgml(warning, warning_path.clone(), input));
         }
     }
 
@@ -168,11 +184,21 @@ fn push_escaped_text(output: &mut String, text: &str) {
     output.push_str(&text[start..]);
 }
 
-fn malformed_sgml(warning: &TokenizeWarning, path: ElementPath) -> ParseWarning {
-    ParseWarning::MalformedSgml {
-        message: warning.to_string(),
+fn malformed_sgml(warning: &TokenizeWarning, path: ElementPath, input: &str) -> ParseWarning {
+    let offset = match warning {
+        TokenizeWarning::UnterminatedTag { span }
+        | TokenizeWarning::UnterminatedComment { span }
+        | TokenizeWarning::UnterminatedProcessingInstruction { span }
+        | TokenizeWarning::EmptyTagName { span }
+        | TokenizeWarning::InvalidTagName { span } => span.start,
+    };
+    ParseWarning::at(
+        ParseWarningKind::MalformedSgml {
+            message: warning.to_string(),
+        },
         path,
-    }
+        position_at(input, offset),
+    )
 }
 
 fn current_path(stack: &[Frame]) -> ElementPath {
@@ -197,12 +223,16 @@ fn handle_close_tag(
     output: &mut String,
     warnings: &mut Vec<ParseWarning>,
     path: &ElementPath,
+    position: crate::diagnostics::SourcePosition,
 ) {
     let Some(position) = stack.iter().rposition(|frame| frame.name == name) else {
-        warnings.push(ParseWarning::UnmatchedCloseTag {
-            name: name.to_owned(),
-            path: path.clone(),
-        });
+        warnings.push(ParseWarning::at(
+            ParseWarningKind::UnmatchedCloseTag {
+                name: name.to_owned(),
+            },
+            path.clone(),
+            position,
+        ));
         return;
     };
 
@@ -223,6 +253,7 @@ fn handle_open_tag(
     output: &mut String,
     warnings: &mut Vec<ParseWarning>,
     path: &ElementPath,
+    position: crate::diagnostics::SourcePosition,
 ) {
     // A leaf cannot contain elements, so a new element always closes it.
     while stack.last().is_some_and(Frame::is_leaf) {
@@ -239,19 +270,22 @@ fn handle_open_tag(
 
     match kind {
         Some(NodeKind::Aggregate) => {
-            close_to_aggregate_parent(stack, output, name, warnings, path);
+            close_to_aggregate_parent(stack, output, name, warnings, path, position);
         }
         Some(NodeKind::Leaf) => {
-            close_to_leaf_parent(stack, output, name, warnings, path);
+            close_to_leaf_parent(stack, output, name, warnings, path, position);
         }
         None => {
             // Unknown elements are left where they are. If they contain child
             // elements they are only closed explicitly or at end of input.
             if unknown_is_ambiguous(tokens, index) {
-                warnings.push(ParseWarning::AmbiguousUnknownElement {
-                    name: name.to_owned(),
-                    path: path.child(name),
-                });
+                warnings.push(ParseWarning::at(
+                    ParseWarningKind::AmbiguousUnknownElement {
+                        name: name.to_owned(),
+                    },
+                    path.child(name),
+                    position,
+                ));
             }
         }
     }
@@ -276,13 +310,17 @@ fn close_to_aggregate_parent(
     name: &str,
     warnings: &mut Vec<ParseWarning>,
     path: &ElementPath,
+    position: crate::diagnostics::SourcePosition,
 ) {
     let (close_count, found) = find_aggregate_parent(stack, name, schema());
     if !found && !stack.is_empty() {
-        warnings.push(ParseWarning::MisplacedElement {
-            name: name.to_owned(),
-            path: path.child(name),
-        });
+        warnings.push(ParseWarning::at(
+            ParseWarningKind::MisplacedElement {
+                name: name.to_owned(),
+            },
+            path.child(name),
+            position,
+        ));
     }
     for _ in 0..close_count {
         pop_and_close(stack, output);
@@ -296,13 +334,17 @@ fn close_to_leaf_parent(
     leaf: &str,
     warnings: &mut Vec<ParseWarning>,
     path: &ElementPath,
+    position: crate::diagnostics::SourcePosition,
 ) {
     let (close_count, found) = find_leaf_parent(stack, leaf, schema());
     if !found && !stack.is_empty() {
-        warnings.push(ParseWarning::MisplacedElement {
-            name: leaf.to_owned(),
-            path: path.child(leaf),
-        });
+        warnings.push(ParseWarning::at(
+            ParseWarningKind::MisplacedElement {
+                name: leaf.to_owned(),
+            },
+            path.child(leaf),
+            position,
+        ));
     }
     for _ in 0..close_count {
         pop_and_close(stack, output);
@@ -389,10 +431,12 @@ fn close_remaining(stack: &mut Vec<Frame>, output: &mut String, warnings: &mut V
     while let Some(frame) = stack.pop() {
         let mut path = current_path(stack);
         path.push(&frame.name);
-        warnings.push(ParseWarning::UnclosedElement {
-            name: frame.name.clone(),
+        warnings.push(ParseWarning::new(
+            ParseWarningKind::UnclosedElement {
+                name: frame.name.clone(),
+            },
             path,
-        });
+        ));
         emit_close(output, &frame.name);
     }
 }
@@ -457,7 +501,7 @@ mod tests {
             normalized
                 .warnings
                 .iter()
-                .any(|warning| matches!(warning, ParseWarning::MalformedSgml { .. }))
+                .any(|warning| matches!(warning.kind(), ParseWarningKind::MalformedSgml { .. }))
         );
     }
 
@@ -573,10 +617,9 @@ mod tests {
         );
         assert!(matches!(
             normalized.warnings.as_slice(),
-            [
-                ParseWarning::RawAmpersand { .. },
-                ParseWarning::UnknownEntity { name, .. },
-            ] if name == "nbsp"
+            [first, second]
+                if matches!(first.kind(), ParseWarningKind::RawAmpersand)
+                    && matches!(second.kind(), ParseWarningKind::UnknownEntity { name } if name == "nbsp")
         ));
     }
 
@@ -586,10 +629,9 @@ mod tests {
         assert!(normalized.xml.contains("<A>1</A>"));
         assert!(matches!(
             normalized.warnings.as_slice(),
-            [
-                ParseWarning::UnmatchedCloseTag { name, .. },
-                ParseWarning::UnclosedElement { name: unclosed, .. },
-            ] if name == "STRAY" && unclosed == "A"
+            [first, second]
+                if matches!(first.kind(), ParseWarningKind::UnmatchedCloseTag { name } if name == "STRAY")
+                    && matches!(second.kind(), ParseWarningKind::UnclosedElement { name } if name == "A")
         ));
     }
 
@@ -600,12 +642,12 @@ mod tests {
         assert_eq!(normalized.warnings.len(), 2);
         assert!(matches!(
             &normalized.warnings[0],
-            ParseWarning::UnclosedElement { name, path }
+            ParseWarning { kind: ParseWarningKind::UnclosedElement { name }, path, .. }
                 if name == "A" && path.to_string() == "OFX/A"
         ));
         assert!(matches!(
             &normalized.warnings[1],
-            ParseWarning::UnclosedElement { name, path }
+            ParseWarning { kind: ParseWarningKind::UnclosedElement { name }, path, .. }
                 if name == "OFX" && path.to_string() == "OFX"
         ));
     }

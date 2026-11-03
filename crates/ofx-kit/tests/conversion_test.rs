@@ -1,4 +1,6 @@
-use ofx_kit::{ConversionOptions, ConversionWarning, convert_bytes, convert_str, parse};
+use ofx_kit::{
+    ConversionOptions, ConversionWarning, ParseWarningKind, convert_bytes, convert_str, parse,
+};
 use proptest::prelude::*;
 
 const SGML: &str = include_str!("fixtures/sgml_header_statement.ofx");
@@ -81,7 +83,10 @@ fn conversion_reports_ambiguous_unknown_elements() {
         .expect("ambiguous SGML should still convert tolerantly");
     assert!(converted.warnings.iter().any(|warning| matches!(
         warning,
-        ConversionWarning::Parse(ofx_kit::ParseWarning::AmbiguousUnknownElement { name, .. })
+        ConversionWarning::Parse(ofx_kit::ParseWarning {
+            kind: ParseWarningKind::AmbiguousUnknownElement { name },
+            ..
+        })
             if name == "UNKNOWN"
     )));
 }

@@ -131,3 +131,22 @@ fn parse_sgml_header_statement_from_fixture() {
     assert_eq!(txn.name(), Some("PAYROLL DEPOSIT"));
     assert!(!txn.amount().is_negative());
 }
+
+#[test]
+fn preserves_repeated_top_level_message_sets() {
+    let input = include_str!("fixtures/simple_bank_statement.ofx");
+    let start = input
+        .find("<BANKMSGSRSV1>")
+        .expect("bank message set should exist");
+    let end = input
+        .find("</BANKMSGSRSV1>")
+        .map(|index| index + "</BANKMSGSRSV1>".len())
+        .expect("bank message set should close");
+    let message_set = &input[start..end];
+    let repeated = input.replacen("</OFX>", &format!("{message_set}</OFX>"), 1);
+
+    let document = parse(&repeated).expect("repeated message sets should parse");
+    assert_eq!(document.bankings().len(), 2);
+    assert_eq!(document.bankings()[0].statement_responses().len(), 1);
+    assert_eq!(document.banking(), Some(&document.bankings()[0]));
+}

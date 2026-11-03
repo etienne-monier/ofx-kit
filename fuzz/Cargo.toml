@@ -1,0 +1,33 @@
+[package]
+name = "ofx-kit-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ofx-kit = { path = "../crates/ofx-kit" }
+
+[[bin]]
+name = "parse_bytes"
+path = "fuzz_targets/parse_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_str"
+path = "fuzz_targets/parse_str.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "convert_bytes"
+path = "fuzz_targets/convert_bytes.rs"
+test = false
+doc = false
+bench = false

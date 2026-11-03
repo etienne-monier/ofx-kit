@@ -93,58 +93,147 @@ impl<const N: usize> From<[&str; N]> for ElementPath {
     }
 }
 
+/// A source location using a zero-based byte offset and one-based line and column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SourcePosition {
+    /// Zero-based byte offset in the decoded source.
+    pub byte_offset: usize,
+    /// One-based line number.
+    pub line: usize,
+    /// One-based column number, measured in bytes.
+    pub column: usize,
+}
+
+/// Computes a source position for a byte offset in UTF-8 text.
+#[must_use]
+pub(crate) fn position_at(source: &str, byte_offset: usize) -> SourcePosition {
+    let offset = byte_offset.min(source.len());
+    let prefix = &source[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix.rsplit('\n').next().map_or(0, str::len) + 1;
+    SourcePosition::new(offset, line, column)
+}
+
+impl SourcePosition {
+    /// Creates a source position.
+    #[must_use]
+    pub const fn new(byte_offset: usize, line: usize, column: usize) -> Self {
+        Self {
+            byte_offset,
+            line,
+            column,
+        }
+    }
+}
+
+/// The kind of a non-fatal condition encountered while parsing an OFX document.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseWarningKind {
+    /// An element that is not part of the known OFX subset was encountered.
+    UnknownElement { name: String },
+    /// An element was found in a position where the schema does not allow it.
+    MisplacedElement { name: String },
+    /// A closing tag did not match any open element and was dropped.
+    UnmatchedCloseTag { name: String },
+    /// An element was still open at the end of the input and was closed implicitly.
+    UnclosedElement { name: String },
+    /// An unknown element contains text before a nested element, making its
+    /// SGML leaf/aggregate interpretation ambiguous.
+    AmbiguousUnknownElement { name: String },
+    /// A raw `&` was found in text and escaped as `&amp;`.
+    RawAmpersand,
+    /// A named entity that is not valid XML was escaped as literal text.
+    UnknownEntity { name: String },
+    /// The SGML tokenizer found malformed or unterminated input.
+    MalformedSgml { message: String },
+}
+
 /// A non-fatal condition encountered while parsing an OFX document.
 ///
 /// Warnings are returned by [`crate::parse_with_warnings`] and
 /// [`crate::parse_bytes_with_warnings`]. They never make parsing fail.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseWarning {
-    /// An element that is not part of the known OFX subset was encountered.
-    UnknownElement { name: String, path: ElementPath },
-    /// An element was found in a position where the schema does not allow it.
-    MisplacedElement { name: String, path: ElementPath },
-    /// A closing tag did not match any open element and was dropped.
-    UnmatchedCloseTag { name: String, path: ElementPath },
-    /// An element was still open at the end of the input and was closed implicitly.
-    UnclosedElement { name: String, path: ElementPath },
-    /// An unknown element contains text before a nested element, making its
-    /// SGML leaf/aggregate interpretation ambiguous.
-    AmbiguousUnknownElement { name: String, path: ElementPath },
-    /// A raw `&` was found in text and escaped as `&amp;`.
-    RawAmpersand { path: ElementPath },
-    /// A named entity that is not valid XML was escaped as literal text.
-    UnknownEntity { name: String, path: ElementPath },
-    /// The SGML tokenizer found malformed or unterminated input.
-    MalformedSgml { message: String, path: ElementPath },
+pub struct ParseWarning {
+    /// The warning classification and associated data.
+    pub kind: ParseWarningKind,
+    /// The OFX element path at which the warning occurred.
+    pub path: ElementPath,
+    /// The source position, when available.
+    pub position: Option<SourcePosition>,
+}
+
+impl ParseWarning {
+    /// Creates a warning without source-position information.
+    #[must_use]
+    pub fn new(kind: ParseWarningKind, path: ElementPath) -> Self {
+        Self {
+            kind,
+            path,
+            position: None,
+        }
+    }
+
+    /// Creates a warning with source-position information.
+    #[must_use]
+    pub fn at(kind: ParseWarningKind, path: ElementPath, position: SourcePosition) -> Self {
+        Self {
+            kind,
+            path,
+            position: Some(position),
+        }
+    }
+
+    /// Returns the warning kind.
+    #[must_use]
+    pub const fn kind(&self) -> &ParseWarningKind {
+        &self.kind
+    }
+
+    /// Returns the element path.
+    #[must_use]
+    pub const fn path(&self) -> &ElementPath {
+        &self.path
+    }
+
+    /// Returns the source position, if known.
+    #[must_use]
+    pub const fn position(&self) -> Option<SourcePosition> {
+        self.position
+    }
 }
 
 impl fmt::Display for ParseWarning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnknownElement { name, path } => {
-                write!(f, "unknown element <{name}> at {path}")
+        match &self.kind {
+            ParseWarningKind::UnknownElement { name } => {
+                write!(f, "unknown element <{name}> at {}", self.path)
             }
-            Self::MisplacedElement { name, path } => {
-                write!(f, "misplaced element <{name}> at {path}")
+            ParseWarningKind::MisplacedElement { name } => {
+                write!(f, "misplaced element <{name}> at {}", self.path)
             }
-            Self::UnmatchedCloseTag { name, path } => {
-                write!(f, "unmatched closing tag </{name}> at {path}")
+            ParseWarningKind::UnmatchedCloseTag { name } => {
+                write!(f, "unmatched closing tag </{name}> at {}", self.path)
             }
-            Self::UnclosedElement { name, path } => {
-                write!(f, "unclosed element <{name}> at {path}")
+            ParseWarningKind::UnclosedElement { name } => {
+                write!(f, "unclosed element <{name}> at {}", self.path)
             }
-            Self::AmbiguousUnknownElement { name, path } => {
-                write!(f, "ambiguous unknown element <{name}> at {path}")
+            ParseWarningKind::AmbiguousUnknownElement { name } => {
+                write!(f, "ambiguous unknown element <{name}> at {}", self.path)
             }
-            Self::RawAmpersand { path } => {
-                write!(f, "raw ampersand escaped at {path}")
+            ParseWarningKind::RawAmpersand => {
+                write!(f, "raw ampersand escaped at {}", self.path)
             }
-            Self::UnknownEntity { name, path } => {
-                write!(f, "unknown entity &{name}; escaped as text at {path}")
+            ParseWarningKind::UnknownEntity { name } => {
+                write!(
+                    f,
+                    "unknown entity &{name}; escaped as text at {}",
+                    self.path
+                )
             }
-            Self::MalformedSgml { message, path } => {
-                write!(f, "malformed SGML: {message} at {path}")
+            ParseWarningKind::MalformedSgml { message } => {
+                write!(f, "malformed SGML: {message} at {}", self.path)
             }
         }
     }
@@ -163,10 +252,12 @@ mod tests {
 
     #[test]
     fn warning_messages_include_paths() {
-        let warning = ParseWarning::UnknownElement {
-            name: "FOO".to_owned(),
-            path: ElementPath::from(["OFX", "STMTRS"]),
-        };
+        let warning = ParseWarning::new(
+            ParseWarningKind::UnknownElement {
+                name: "FOO".to_owned(),
+            },
+            ElementPath::from(["OFX", "STMTRS"]),
+        );
         assert_eq!(warning.to_string(), "unknown element <FOO> at OFX/STMTRS");
     }
 }

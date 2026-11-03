@@ -1,4 +1,6 @@
-use ofx_kit::{DecodeWarning, DetectedEncoding, OfxError, decode, parse_bytes};
+use ofx_kit::{
+    DecodeWarning, DetectedEncoding, OfxError, decode, parse_bytes, parse_bytes_with_warnings,
+};
 
 #[test]
 fn decodes_raw_encoding_fixtures() {
@@ -75,4 +77,16 @@ fn decodes_mislabeled_utf8_fixture_without_losing_source_bytes() {
 
     assert_eq!(decoded.encoding, DetectedEncoding::Windows1252);
     assert!(decoded.text.contains("CafÃ©Bank"));
+}
+
+#[test]
+fn byte_parse_returns_decode_warnings_with_the_document() {
+    let source = include_bytes!("fixtures/encoding/cp1252.ofx");
+    let parsed = parse_bytes_with_warnings(source).expect("cp1252 fixture should parse");
+    assert!(
+        parsed
+            .decode_warnings
+            .iter()
+            .any(|warning| matches!(warning, DecodeWarning::FallbackToWindows1252))
+    );
 }

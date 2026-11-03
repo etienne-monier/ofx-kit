@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::aggregates::error::AggregateError;
+use crate::diagnostics::ParseWarning;
 use crate::header::HeaderError;
 use crate::xml::XmlError;
 
@@ -10,6 +11,8 @@ use crate::xml::XmlError;
 pub enum OfxError {
     /// The input uses a compression format that the library does not decode.
     UnsupportedCompression,
+    /// Strict parsing rejected a structural warning.
+    StrictViolation(ParseWarning),
     /// An error occurred while parsing the OFX header.
     Header(HeaderError),
     /// An error occurred while parsing XML structure.
@@ -22,6 +25,7 @@ impl fmt::Display for OfxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedCompression => f.write_str("compressed OFX input is not supported"),
+            Self::StrictViolation(warning) => write!(f, "strict parsing failed: {warning}"),
             Self::Header(e) => write!(f, "header error: {e}"),
             Self::Xml(e) => write!(f, "XML error: {e}"),
             Self::Aggregate(e) => write!(f, "aggregate error: {e}"),
@@ -33,6 +37,7 @@ impl std::error::Error for OfxError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::UnsupportedCompression => None,
+            Self::StrictViolation(_) => None,
             Self::Header(e) => Some(e),
             Self::Xml(e) => Some(e),
             Self::Aggregate(e) => Some(e),
