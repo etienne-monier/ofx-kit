@@ -23,7 +23,12 @@ use validate::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConversionWarning {
     /// A source header field was not copied to the UTF-8 XML header.
-    DroppedHeaderField { name: String, value: String },
+    DroppedHeaderField {
+        /// Name of the source header field.
+        name: String,
+        /// Value of the source header field.
+        value: String,
+    },
     /// A warning emitted while normalizing the SGML body.
     Parse(ParseWarning),
 }

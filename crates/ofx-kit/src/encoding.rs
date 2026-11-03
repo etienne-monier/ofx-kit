@@ -6,14 +6,23 @@ use core::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DetectedEncoding {
+    /// UTF-8 encoding.
     Utf8,
+    /// Little-endian UTF-16 encoding.
     Utf16Le,
+    /// Big-endian UTF-16 encoding.
     Utf16Be,
+    /// Windows-1252 encoding.
     Windows1252,
+    /// Big5 encoding.
     Big5,
+    /// GB18030 encoding.
     Gb18030,
+    /// Shift JIS encoding.
     ShiftJis,
+    /// EUC-KR encoding.
     EucKr,
+    /// An encoding name not mapped to a dedicated variant.
     Other(String),
 }
 
@@ -21,14 +30,22 @@ pub enum DetectedEncoding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DecodeWarning {
+    /// Decoding fell back to Windows-1252.
     FallbackToWindows1252,
+    /// The declared and detected encodings differ.
     DeclaredEncoding {
+        /// Encoding declared by the source.
         declared: String,
+        /// Encoding selected by detection.
         detected: DetectedEncoding,
     },
+    /// The source declared an unsupported encoding name.
     UnsupportedDeclaredEncoding(String),
+    /// The input appears to be compressed.
     CompressedInput,
+    /// The selected decoder replaced malformed input.
     MalformedInput {
+        /// Encoding used while decoding the malformed input.
         encoding: DetectedEncoding,
     },
 }
@@ -36,8 +53,11 @@ pub enum DecodeWarning {
 /// The decoded OFX source and the information used to decode it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedSource {
+    /// Decoded UTF-8 source text.
     pub text: String,
+    /// Encoding selected for decoding.
     pub encoding: DetectedEncoding,
+    /// Non-fatal decoding warnings.
     pub warnings: Vec<DecodeWarning>,
 }
 

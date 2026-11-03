@@ -63,46 +63,55 @@ impl Payee {
     }
 
     #[must_use]
+    /// Returns the payee name.
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// Returns the first address line.
     pub fn address1(&self) -> &str {
         &self.address1
     }
 
     #[must_use]
+    /// Returns the optional second address line.
     pub fn address2(&self) -> Option<&str> {
         self.address2.as_deref()
     }
 
     #[must_use]
+    /// Returns the optional third address line.
     pub fn address3(&self) -> Option<&str> {
         self.address3.as_deref()
     }
 
     #[must_use]
+    /// Returns the city.
     pub fn city(&self) -> &str {
         &self.city
     }
 
     #[must_use]
+    /// Returns the state or province.
     pub fn state(&self) -> &str {
         &self.state
     }
 
     #[must_use]
+    /// Returns the postal code.
     pub fn postal_code(&self) -> &str {
         &self.postal_code
     }
 
     #[must_use]
+    /// Returns the optional country code.
     pub fn country(&self) -> Option<&str> {
         self.country.as_deref()
     }
 
     #[must_use]
+    /// Returns the telephone number.
     pub fn phone(&self) -> &str {
         &self.phone
     }

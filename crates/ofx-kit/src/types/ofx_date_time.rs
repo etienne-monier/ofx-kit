@@ -48,25 +48,55 @@ pub enum InvalidOfxDateTime {
     /// The input string was empty.
     Empty,
     /// The input string was too short (less than 8 characters for YYYYMMDD).
-    TooShort { length: usize },
+    TooShort {
+        /// Length of the rejected value.
+        length: usize,
+    },
     /// The year value was invalid.
-    InvalidYear { value: String },
+    InvalidYear {
+        /// Rejected year value.
+        value: String,
+    },
     /// The month value was invalid (must be 01-12).
-    InvalidMonth { value: String },
+    InvalidMonth {
+        /// Rejected month value.
+        value: String,
+    },
     /// The day value was invalid for the given month.
-    InvalidDay { value: String },
+    InvalidDay {
+        /// Rejected day value.
+        value: String,
+    },
     /// The hour value was invalid (must be 00-23).
-    InvalidHour { value: String },
+    InvalidHour {
+        /// Rejected hour value.
+        value: String,
+    },
     /// The minute value was invalid (must be 00-59).
-    InvalidMinute { value: String },
+    InvalidMinute {
+        /// Rejected minute value.
+        value: String,
+    },
     /// The second value was invalid (must be 00-59).
-    InvalidSecond { value: String },
+    InvalidSecond {
+        /// Rejected second value.
+        value: String,
+    },
     /// The fractional seconds portion was invalid.
-    InvalidFraction { value: String },
+    InvalidFraction {
+        /// Rejected fractional-seconds value.
+        value: String,
+    },
     /// The timezone offset was invalid.
-    InvalidOffset { value: String },
+    InvalidOffset {
+        /// Rejected timezone offset.
+        value: String,
+    },
     /// The datetime string contained non-numeric characters where digits were expected.
-    InvalidFormat { detail: String },
+    InvalidFormat {
+        /// Description of the format failure.
+        detail: String,
+    },
 }
 
 impl fmt::Display for InvalidOfxDateTime {

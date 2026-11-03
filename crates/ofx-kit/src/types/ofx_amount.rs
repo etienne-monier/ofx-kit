@@ -42,9 +42,15 @@ pub enum InvalidOfxAmount {
     /// The input string was empty.
     Empty,
     /// The input string exceeded the maximum length of 32 characters.
-    TooLong { length: usize },
+    TooLong {
+        /// Length of the rejected amount string.
+        length: usize,
+    },
     /// The input string could not be parsed as a decimal number.
-    NotANumber { value: String },
+    NotANumber {
+        /// Rejected input value.
+        value: String,
+    },
 }
 
 impl fmt::Display for InvalidOfxAmount {

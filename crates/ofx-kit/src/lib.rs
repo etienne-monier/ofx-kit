@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
+#![warn(missing_docs)]
 // Structured parse errors intentionally carry their diagnostic context.
 #![allow(clippy::result_large_err)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]

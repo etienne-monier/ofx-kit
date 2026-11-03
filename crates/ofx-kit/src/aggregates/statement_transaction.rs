@@ -214,120 +214,140 @@ impl StatementTransactionBuilder {
         }
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn transaction_type(mut self, v: TransactionType) -> Self {
         self.transaction_type = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn date_posted(mut self, v: OfxDateTime) -> Self {
         self.date_posted = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn date_user(mut self, v: OfxDateTime) -> Self {
         self.date_user = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn date_available(mut self, v: OfxDateTime) -> Self {
         self.date_available = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn amount(mut self, v: OfxAmount) -> Self {
         self.amount = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn fit_id(mut self, v: FitId) -> Self {
         self.fit_id = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn correction_id(mut self, v: CorrectionId) -> Self {
         self.correction_id = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn correction_action(mut self, v: CorrectionAction) -> Self {
         self.correction_action = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn server_transaction_id(mut self, v: ServerTransactionId) -> Self {
         self.server_transaction_id = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn check_number(mut self, v: CheckNumber) -> Self {
         self.check_number = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn reference_number(mut self, v: String) -> Self {
         self.reference_number = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn sic(mut self, v: u32) -> Self {
         self.sic = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn payee_id(mut self, v: String) -> Self {
         self.payee_id = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn name(mut self, v: String) -> Self {
         self.name = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn payee(mut self, v: Payee) -> Self {
         self.payee = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn bank_account_to(mut self, v: BankAccount) -> Self {
         self.bank_account_to = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn cc_account_to(mut self, v: CreditCardAccount) -> Self {
         self.cc_account_to = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn memo(mut self, v: String) -> Self {
         self.memo = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub fn currency(mut self, v: CurrencyInfo) -> Self {
         self.currency = Some(v);
         self
     }
 
+    /// Sets the corresponding transaction field.
     #[must_use]
     pub const fn inv401k_source(mut self, v: Inv401kSource) -> Self {
         self.inv401k_source = Some(v);

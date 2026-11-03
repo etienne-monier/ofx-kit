@@ -131,22 +131,43 @@ impl SourcePosition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseWarningKind {
     /// An element that is not part of the known OFX subset was encountered.
-    UnknownElement { name: String },
+    UnknownElement {
+        /// Element name.
+        name: String,
+    },
     /// An element was found in a position where the schema does not allow it.
-    MisplacedElement { name: String },
+    MisplacedElement {
+        /// Element name.
+        name: String,
+    },
     /// A closing tag did not match any open element and was dropped.
-    UnmatchedCloseTag { name: String },
+    UnmatchedCloseTag {
+        /// Closing-tag name.
+        name: String,
+    },
     /// An element was still open at the end of the input and was closed implicitly.
-    UnclosedElement { name: String },
+    UnclosedElement {
+        /// Element name.
+        name: String,
+    },
     /// An unknown element contains text before a nested element, making its
     /// SGML leaf/aggregate interpretation ambiguous.
-    AmbiguousUnknownElement { name: String },
+    AmbiguousUnknownElement {
+        /// Element name.
+        name: String,
+    },
     /// A raw `&` was found in text and escaped as `&amp;`.
     RawAmpersand,
     /// A named entity that is not valid XML was escaped as literal text.
-    UnknownEntity { name: String },
+    UnknownEntity {
+        /// Entity name.
+        name: String,
+    },
     /// The SGML tokenizer found malformed or unterminated input.
-    MalformedSgml { message: String },
+    MalformedSgml {
+        /// Description of the malformed input.
+        message: String,
+    },
 }
 
 /// A non-fatal condition encountered while parsing an OFX document.

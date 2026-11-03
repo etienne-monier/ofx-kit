@@ -36,7 +36,12 @@ macro_rules! validated_string {
             /// The input was empty.
             Empty,
             /// The input exceeded the maximum allowed length.
-            TooLong { length: usize, max: usize },
+            TooLong {
+                /// Length of the input string.
+                length: usize,
+                /// Maximum permitted length.
+                max: usize,
+            },
         }
 
         impl core::fmt::Display for $error_name {

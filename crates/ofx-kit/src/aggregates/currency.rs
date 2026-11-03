@@ -12,9 +12,19 @@ use crate::types::{CurrencyCode, OfxAmount};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CurrencyInfo {
     /// The transaction amount is in this currency (converted from statement default).
-    Currency { code: CurrencyCode, rate: OfxAmount },
+    Currency {
+        /// Currency code of the converted amount.
+        code: CurrencyCode,
+        /// Exchange rate relative to the statement currency.
+        rate: OfxAmount,
+    },
     /// The transaction amount is in the original currency (before conversion).
-    OrigCurrency { code: CurrencyCode, rate: OfxAmount },
+    OrigCurrency {
+        /// Currency code before conversion.
+        code: CurrencyCode,
+        /// Exchange rate relative to the statement currency.
+        rate: OfxAmount,
+    },
 }
 
 impl CurrencyInfo {

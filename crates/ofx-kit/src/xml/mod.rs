@@ -14,17 +14,36 @@ pub use reader::OfxReader;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum XmlErrorKind {
     /// The XML document was malformed.
-    MalformedXml { message: String },
+    MalformedXml {
+        /// Description of the XML error.
+        message: String,
+    },
     /// An unexpected element was encountered.
-    UnexpectedElement { expected: String, found: String },
+    UnexpectedElement {
+        /// Element that was expected.
+        expected: String,
+        /// Element that was encountered.
+        found: String,
+    },
     /// A required element was missing from its parent.
-    MissingElement { parent: String, element: String },
+    MissingElement {
+        /// Parent aggregate.
+        parent: String,
+        /// Missing child element.
+        element: String,
+    },
     /// An element outside the supported OFX subset was encountered.
-    UnknownElement { name: String },
+    UnknownElement {
+        /// Unknown element name.
+        name: String,
+    },
     /// An element contained invalid text content.
     InvalidContent {
+        /// Element containing invalid content.
         element: String,
+        /// Original text value.
         value: String,
+        /// Explanation of the validation failure.
         reason: String,
     },
 }
@@ -34,8 +53,11 @@ pub enum XmlErrorKind {
 /// Every error carries the [`ElementPath`] at which it occurred.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlError {
+    /// Structured XML error kind.
     kind: XmlErrorKind,
+    /// Element path at which the error occurred.
     path: ElementPath,
+    /// Optional source position.
     position: Option<SourcePosition>,
 }
 

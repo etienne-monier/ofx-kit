@@ -9,13 +9,25 @@ pub enum HeaderError {
     /// No OFX header was found in the input.
     Missing,
     /// The OFX processing instruction was malformed.
-    MalformedProcessingInstruction { detail: String },
+    MalformedProcessingInstruction {
+        /// Description of the malformed processing instruction.
+        detail: String,
+    },
     /// A required attribute was missing from the header.
-    MissingAttribute { attribute: &'static str },
+    MissingAttribute {
+        /// Name of the missing attribute.
+        attribute: &'static str,
+    },
     /// The VERSION attribute had an invalid value.
-    InvalidVersion { value: String },
+    InvalidVersion {
+        /// Rejected version value.
+        value: String,
+    },
     /// The SECURITY attribute had an invalid value.
-    InvalidSecurity { value: String },
+    InvalidSecurity {
+        /// Rejected security value.
+        value: String,
+    },
 }
 
 impl fmt::Display for HeaderError {

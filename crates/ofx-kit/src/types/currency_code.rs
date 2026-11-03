@@ -21,9 +21,17 @@ pub enum InvalidCurrencyCode {
     /// The input string was empty.
     Empty,
     /// The input string was not exactly 3 characters.
-    WrongLength { length: usize },
+    WrongLength {
+        /// Number of characters received.
+        length: usize,
+    },
     /// The input string contained a non-uppercase-ASCII character.
-    InvalidCharacter { character: char, position: usize },
+    InvalidCharacter {
+        /// Rejected character.
+        character: char,
+        /// Character position in the input.
+        position: usize,
+    },
 }
 
 impl fmt::Display for InvalidCurrencyCode {
