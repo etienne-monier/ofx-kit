@@ -16,7 +16,8 @@ released in lockstep.
 2. Update the version in `[workspace.package]`.
 3. Add the release date and changes to `CHANGELOG.md`.
 4. Commit with `chore: release vX.Y.Z` and create tag `vX.Y.Z`.
-5. Publish `ofx-kit` first, then `ofx-kit-cli`.
+5. Push the `vX.Y.Z` tag. The release workflow validates the workspace and
+   publishes `ofx-kit` and `ofx-kit-cli` in dependency order.
 6. Verify docs.rs and the GitHub Pages deployment.
 
 The old `ofx-rs` package is not replaced in place; `ofx-kit` is its successor.

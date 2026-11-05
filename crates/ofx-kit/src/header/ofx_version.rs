@@ -61,7 +61,7 @@ impl FromStr for OfxVersion {
             value: s.to_owned(),
         };
         let convert = |_char: char| -> Result<u8, _> {
-            Ok(u8::try_from(_char.to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?)
+            u8::try_from(_char.to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())
         };
 
         let major = convert(chars[0])?;

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.3.0] - 2026-11-05
+
 ### Added
 
 - `ofx inspect`, `ofx validate`, and `ofx decode` commands.
@@ -19,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   positions, and plural message-set accessors.
 - Fuzz targets and a weekly scheduled fuzz-build workflow.
 - A supported OFX subset reference page.
+- The `ofx-kit` Cargo package and `ofx_kit` Rust import path.
+- The `ofx-kit-cli` package with the `ofx` binary skeleton.
+- An Astro Starlight documentation site and GitHub Pages deployment workflow.
+- Workspace-level release metadata and this changelog.
 
 ### Changed
 
@@ -31,17 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   position until a source map can provide a reliable mapping.
 - `Payee` now requires only `NAME`; address and telephone fields are optional.
   This changes `Payee::new` and the accessors for those fields.
-
-## [0.3.0] - 2026-11-02
-
-### Added
-
-- The `ofx-kit` Cargo package and `ofx_kit` Rust import path.
-- The `ofx-kit-cli` package with the `ofx` binary skeleton.
-- An Astro Starlight documentation site and GitHub Pages deployment workflow.
-- Workspace-level release metadata and this changelog.
-
-### Changed
 
 - Moved the library and its tests into the Cargo workspace.
 
