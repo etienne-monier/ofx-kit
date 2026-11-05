@@ -43,13 +43,10 @@ pub(super) fn parse_payee(reader: &mut OfxReader<'_>) -> Result<Payee, OfxError>
     }
 
     let name = name.ok_or_else(|| reader.missing_in("PAYEE", "NAME"))?;
-    let addr1 = addr1.ok_or_else(|| reader.missing_in("PAYEE", "ADDR1"))?;
-    let city = city.ok_or_else(|| reader.missing_in("PAYEE", "CITY"))?;
-    let state = state.ok_or_else(|| reader.missing_in("PAYEE", "STATE"))?;
-    let postalcode = postalcode.ok_or_else(|| reader.missing_in("PAYEE", "POSTALCODE"))?;
-    let phone = phone.ok_or_else(|| reader.missing_in("PAYEE", "PHONE"))?;
-
-    let mut payee = Payee::new(name, addr1, city, state, postalcode, phone);
+    let mut payee = Payee::new(name);
+    if let Some(value) = addr1 {
+        payee = payee.with_address1(value);
+    }
     if let Some(a2) = addr2 {
         payee = payee.with_address2(a2);
     }
@@ -59,7 +56,51 @@ pub(super) fn parse_payee(reader: &mut OfxReader<'_>) -> Result<Payee, OfxError>
     if let Some(c) = country {
         payee = payee.with_country(c);
     }
+    if let Some(value) = city {
+        payee = payee.with_city(value);
+    }
+    if let Some(value) = state {
+        payee = payee.with_state(value);
+    }
+    if let Some(value) = postalcode {
+        payee = payee.with_postal_code(value);
+    }
+    if let Some(value) = phone {
+        payee = payee.with_phone(value);
+    }
     Ok(payee)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_payee_with_only_name() {
+        let mut reader = OfxReader::new("<PAYEE><NAME>ACME</NAME></PAYEE>");
+        let _ = reader.next_event().expect("PAYEE start should parse");
+
+        let payee = parse_payee(&mut reader).expect("minimal PAYEE should parse");
+
+        assert_eq!(payee.name(), "ACME");
+        assert_eq!(payee.address1(), None);
+        assert_eq!(payee.city(), None);
+        assert_eq!(payee.phone(), None);
+    }
+
+    #[test]
+    fn requires_payee_name() {
+        let mut reader = OfxReader::new("<PAYEE><CITY>Paris</CITY></PAYEE>");
+        let _ = reader.next_event().expect("PAYEE start should parse");
+
+        let error = parse_payee(&mut reader).expect_err("PAYEE without NAME must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("missing required element <NAME> in <PAYEE>")
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

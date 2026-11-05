@@ -12,7 +12,7 @@ use crate::aggregates::{
     InvStatementResponse, InvestmentAccount, LedgerBalance, Payee, StatementResponse,
     StatementTransactionBuilder, Status, TransactionList, TransactionWrapper,
 };
-use crate::diagnostics::ParseWarning;
+use crate::diagnostics::{ParseWarning, position_at};
 use crate::document::{
     BankingMessageSet, CreditCardMessageSet, InvestmentMessageSet, OfxDocument, SignonResponse,
 };
@@ -131,15 +131,26 @@ pub fn parse_with_warnings(input: &str) -> Result<ParsedDocument, OfxError> {
 /// Parses an OFX document with explicit parser options and returns warnings.
 pub fn parse_with_options(input: &str, options: &ParseOptions) -> Result<ParsedDocument, OfxError> {
     let (ofx_header, xml_body) = header::parse_header(input)?;
-    let xml_body = xml_body.trim();
+    // Keep the body untrimmed so positions remain relative to the complete
+    // decoded source, including the header and any leading whitespace.
+    let body_offset = input.len() - xml_body.len();
 
     // OFX 1.x uses SGML where closing tags are optional. We need to normalize
     // the body to well-formed XML before parsing.
     if ofx_header.version().major() < 2 {
         let normalized = crate::sgml::normalize_sgml_to_xml_with_warnings(xml_body);
-        reject_strict_warnings(&normalized.warnings, options)?;
-        let (document, mut xml_warnings) = parse_ofx_body(&normalized.xml, ofx_header, options)?;
-        let mut warnings = normalized.warnings;
+        let mut normalized_warnings = normalized.warnings;
+        remap_positions(&mut normalized_warnings, input, body_offset);
+        reject_strict_warnings(&normalized_warnings, options)?;
+        let (document, mut xml_warnings) = parse_ofx_body(
+            &normalized.xml,
+            ofx_header,
+            options,
+            input,
+            body_offset,
+            false,
+        )?;
+        let mut warnings = normalized_warnings;
         warnings.append(&mut xml_warnings);
         Ok(ParsedDocument {
             document,
@@ -147,7 +158,8 @@ pub fn parse_with_options(input: &str, options: &ParseOptions) -> Result<ParsedD
             decode_warnings: Vec::new(),
         })
     } else {
-        let (document, warnings) = parse_ofx_body(xml_body, ofx_header, options)?;
+        let (document, warnings) =
+            parse_ofx_body(xml_body, ofx_header, options, input, body_offset, true)?;
         Ok(ParsedDocument {
             document,
             warnings,
@@ -222,8 +234,17 @@ fn parse_ofx_body(
     xml: &str,
     header: OfxHeader,
     options: &ParseOptions,
+    position_source: &str,
+    position_offset: usize,
+    track_positions: bool,
 ) -> Result<(OfxDocument, Vec<ParseWarning>), OfxError> {
-    let mut reader = OfxReader::with_options(xml, options);
+    let mut reader = OfxReader::with_options_and_source(
+        xml,
+        options,
+        position_source,
+        position_offset,
+        track_positions,
+    );
     let mut signon: Option<SignonResponse> = None;
     let mut banking = Vec::new();
     let mut credit_card = Vec::new();
@@ -283,6 +304,14 @@ fn parse_ofx_body(
     }
 
     Ok((doc, reader.take_warnings()))
+}
+
+fn remap_positions(warnings: &mut [ParseWarning], source: &str, source_offset: usize) {
+    for warning in warnings {
+        if let Some(position) = warning.position.as_mut() {
+            *position = position_at(source, source_offset + position.byte_offset);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

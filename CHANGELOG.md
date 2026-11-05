@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - SGML text is preserved verbatim during normalization, including UTF-8 and CRLF input.
 - `ParsedDocument` also carries byte-decoding warnings, and repeated top-level
   message sets are preserved instead of overwritten.
+- Source positions are reported relative to the complete decoded input, including
+  the OFX header. Diagnostics produced while reading normalized SGML omit a
+  position until a source map can provide a reliable mapping.
+- `Payee` now requires only `NAME`; address and telephone fields are optional.
+  This changes `Payee::new` and the accessors for those fields.
 
 ## [0.3.0] - 2026-11-02
 

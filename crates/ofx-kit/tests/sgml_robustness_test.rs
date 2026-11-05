@@ -86,7 +86,9 @@ fn reports_unknown_leaves_with_their_path() {
         unknown.to_string(),
         "OFX/BANKMSGSRSV1/STMTTRNRS/STMTRS/BANKTRANLIST/STMTTRN/UNKNOWNLEAF"
     );
-    assert!(unknown_position(parsed.warnings.as_slice()).is_some());
+    // XML-reader diagnostics operate on normalized SGML and therefore do not
+    // expose positions until a source map is available.
+    assert!(unknown_position(parsed.warnings.as_slice()).is_none());
 }
 
 fn unknown_position(warnings: &[ParseWarning]) -> Option<ofx_kit::SourcePosition> {
@@ -136,6 +138,24 @@ fn reports_raw_ampersands_and_unknown_entities() {
     assert!(
         raw_paths.contains(&"OFX/SIGNONMSGSRSV1/SONRS/STATUS/MESSAGE".to_owned()),
         "raw ampersand paths: {raw_paths:?}"
+    );
+
+    let raw_ampersand_position = parsed
+        .warnings
+        .iter()
+        .find_map(|warning| match warning {
+            ParseWarning {
+                kind: ParseWarningKind::RawAmpersand,
+                path,
+                position: Some(position),
+                ..
+            } if path.to_string() == "OFX/SIGNONMSGSRSV1/SONRS/STATUS/MESSAGE" => Some(*position),
+            _ => None,
+        })
+        .expect("raw ampersand should have a source position");
+    assert_eq!(
+        raw_ampersand_position.byte_offset,
+        EDGE_CASES.find("Raw&").expect("raw ampersand fixture") + 3
     );
 
     let entity = parsed

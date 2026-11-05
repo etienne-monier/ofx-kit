@@ -19,12 +19,14 @@ enum TextOrChildren {
 
 /// A wrapper around `quick_xml::Reader` that provides OFX-specific reading helpers.
 pub struct OfxReader<'a> {
-    source: &'a str,
+    position_source: &'a str,
+    position_offset: usize,
     reader: Reader<&'a [u8]>,
     buf: Vec<u8>,
     path: ElementPath,
     warnings: Vec<ParseWarning>,
     options: ParseOptions,
+    track_positions: bool,
 }
 
 impl<'a> OfxReader<'a> {
@@ -37,15 +39,41 @@ impl<'a> OfxReader<'a> {
     /// Create a new reader with parser options.
     #[must_use]
     pub fn with_options(xml: &'a str, options: &ParseOptions) -> Self {
+        Self::with_options_and_source(xml, options, xml, 0, true)
+    }
+
+    /// Creates a reader whose event offsets are mapped into `position_source`.
+    #[must_use]
+    pub(crate) fn with_options_and_source(
+        xml: &'a str,
+        options: &ParseOptions,
+        position_source: &'a str,
+        position_offset: usize,
+        track_positions: bool,
+    ) -> Self {
         let mut reader = Reader::from_reader(xml.as_bytes());
         reader.config_mut().trim_text(true);
         Self {
-            source: xml,
+            position_source,
+            position_offset,
             reader,
             buf: Vec::with_capacity(256),
             path: ElementPath::new(),
             warnings: Vec::new(),
             options: options.clone(),
+            track_positions,
+        }
+    }
+
+    fn position_at(&self, offset: usize) -> Option<crate::diagnostics::SourcePosition> {
+        self.track_positions
+            .then(|| position_at(self.position_source, self.position_offset + offset))
+    }
+
+    fn with_position(&self, error: XmlError, offset: usize) -> XmlError {
+        match self.position_at(offset) {
+            Some(position) => error.with_position(position),
+            None => error,
         }
     }
 
@@ -62,10 +90,10 @@ impl<'a> OfxReader<'a> {
 
     /// Builds a malformed-XML error at the current path.
     pub(crate) fn malformed(&self, message: impl Into<String>) -> XmlError {
-        XmlError::malformed(self.path.clone(), message).with_position(position_at(
-            self.source,
+        self.with_position(
+            XmlError::malformed(self.path.clone(), message),
             self.reader.buffer_position() as usize,
-        ))
+        )
     }
 
     /// Builds a missing-element error for `element` inside `parent`.
@@ -81,10 +109,10 @@ impl<'a> OfxReader<'a> {
         } else {
             self.path.child(parent)
         };
-        XmlError::missing(path, parent, element).with_position(position_at(
-            self.source,
+        self.with_position(
+            XmlError::missing(path, parent, element),
             self.reader.buffer_position() as usize,
-        ))
+        )
     }
 
     /// Builds an invalid-content error for `element`.
@@ -99,10 +127,10 @@ impl<'a> OfxReader<'a> {
         } else {
             self.path.child(element)
         };
-        XmlError::invalid_content(path, element, value, reason).with_position(position_at(
-            self.source,
+        self.with_position(
+            XmlError::invalid_content(path, element, value, reason),
             self.reader.buffer_position() as usize,
-        ))
+        )
     }
 
     /// Read the next XML event, skipping comments and declarations.
@@ -157,25 +185,19 @@ impl<'a> OfxReader<'a> {
                     if name == tag_name {
                         return Ok(text);
                     }
-                    return Err(XmlError::unexpected(
-                        path,
-                        tag_name.to_owned(),
-                        format!("/{name}"),
-                    )
-                    .with_position(position_at(
-                        self.source,
+                    return Err(self.with_position(
+                        XmlError::unexpected(path, tag_name.to_owned(), format!("/{name}")),
                         self.reader.buffer_position() as usize,
-                    )));
+                    ));
                 }
                 Event::Eof => {
-                    return Err(XmlError::malformed(
-                        path,
-                        format!("unexpected EOF while reading <{tag_name}>"),
-                    )
-                    .with_position(position_at(
-                        self.source,
+                    return Err(self.with_position(
+                        XmlError::malformed(
+                            path,
+                            format!("unexpected EOF while reading <{tag_name}>"),
+                        ),
                         self.reader.buffer_position() as usize,
-                    )));
+                    ));
                 }
                 _ => {
                     // Nested elements within a text field are unexpected
@@ -228,19 +250,21 @@ impl<'a> OfxReader<'a> {
         if crate::schema::schema().kind(tag_name).is_none() {
             match self.options.unknown_elements {
                 UnknownElementPolicy::Ignore => {}
-                UnknownElementPolicy::Warn => self.warnings.push(ParseWarning::at(
-                    ParseWarningKind::UnknownElement {
+                UnknownElementPolicy::Warn => {
+                    let kind = ParseWarningKind::UnknownElement {
                         name: tag_name.to_owned(),
-                    },
-                    self.path.clone(),
-                    position_at(
-                        self.source,
-                        self.reader
-                            .buffer_position()
-                            .saturating_sub((tag_name.len() + 2) as u64)
-                            as usize,
-                    ),
-                )),
+                    };
+                    let offset = self
+                        .reader
+                        .buffer_position()
+                        .saturating_sub((tag_name.len() + 2) as u64)
+                        as usize;
+                    let warning = match self.position_at(offset) {
+                        Some(position) => ParseWarning::at(kind, self.path.clone(), position),
+                        None => ParseWarning::new(kind, self.path.clone()),
+                    };
+                    self.warnings.push(warning);
+                }
                 UnknownElementPolicy::Error => {
                     return Err(XmlError::new(
                         crate::xml::XmlErrorKind::UnknownElement {
@@ -501,5 +525,19 @@ mod tests {
             }
             other => panic!("unexpected warning: {other:?}"),
         }
+    }
+
+    #[test]
+    fn omits_positions_for_normalized_sources() {
+        let xml = "<OFX><UNKNOWN>value</UNKNOWN></OFX>";
+        let mut reader =
+            OfxReader::with_options_and_source(xml, &ParseOptions::default(), xml, 0, false);
+        let _ = reader.next_event().unwrap();
+        let _ = reader.next_event().unwrap();
+        reader.skip_element("UNKNOWN").unwrap();
+
+        let warnings = reader.take_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].position(), None);
     }
 }
