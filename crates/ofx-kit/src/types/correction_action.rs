@@ -14,19 +14,12 @@ pub enum CorrectionAction {
 }
 
 /// Error returned when parsing an invalid correction action string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid correction action: '{value}'")]
 pub struct InvalidCorrectionAction {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidCorrectionAction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid correction action: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidCorrectionAction {}
 
 impl FromStr for CorrectionAction {
     type Err = InvalidCorrectionAction;

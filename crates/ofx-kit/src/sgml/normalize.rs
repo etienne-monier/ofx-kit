@@ -66,6 +66,9 @@ pub(crate) fn normalize_sgml_to_xml(input: &str) -> String {
 /// Text is preserved verbatim. Only entity references are rewritten when XML
 /// requires it.
 pub(crate) fn normalize_sgml_to_xml_with_warnings(input: &str) -> NormalizedSgml {
+    // Start analyzing the input with the tokenizer
+    // This is responsible to generate tokens to check the input is well-formed (no unclosed tags, etc)
+    // It generates a list of tokens with their source position.
     let mut tokenizer = Tokenizer::new(input);
     let mut tokens = Vec::new();
     let mut warning_starts = Vec::new();

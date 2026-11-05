@@ -46,19 +46,12 @@ pub enum TransactionType {
 }
 
 /// Error returned when parsing an invalid transaction type string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid transaction type: '{value}'")]
 pub struct InvalidTransactionType {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidTransactionType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid transaction type: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidTransactionType {}
 
 impl FromStr for TransactionType {
     type Err = InvalidTransactionType;

@@ -14,19 +14,12 @@ pub enum SecurityLevel {
 }
 
 /// Error returned when parsing an invalid security level string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid security level: '{value}'")]
 pub struct InvalidSecurityLevel {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidSecurityLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid security level: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidSecurityLevel {}
 
 impl FromStr for SecurityLevel {
     type Err = InvalidSecurityLevel;

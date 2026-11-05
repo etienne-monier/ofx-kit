@@ -43,104 +43,72 @@ impl Ord for OfxDateTime {
 }
 
 /// Error returned when parsing an invalid OFX datetime string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum InvalidOfxDateTime {
     /// The input string was empty.
+    #[error("datetime cannot be empty")]
     Empty,
     /// The input string was too short (less than 8 characters for YYYYMMDD).
+    #[error("datetime too short ({length} chars), minimum is 8 (YYYYMMDD)")]
     TooShort {
         /// Length of the rejected value.
         length: usize,
     },
     /// The year value was invalid.
+    #[error("invalid year: '{value}'")]
     InvalidYear {
         /// Rejected year value.
         value: String,
     },
     /// The month value was invalid (must be 01-12).
+    #[error("invalid month: '{value}'")]
     InvalidMonth {
         /// Rejected month value.
         value: String,
     },
     /// The day value was invalid for the given month.
+    #[error("invalid day: '{value}'")]
     InvalidDay {
         /// Rejected day value.
         value: String,
     },
     /// The hour value was invalid (must be 00-23).
+    #[error("invalid hour: '{value}'")]
     InvalidHour {
         /// Rejected hour value.
         value: String,
     },
     /// The minute value was invalid (must be 00-59).
+    #[error("invalid minute: '{value}'")]
     InvalidMinute {
         /// Rejected minute value.
         value: String,
     },
     /// The second value was invalid (must be 00-59).
+    #[error("invalid second: '{value}'")]
     InvalidSecond {
         /// Rejected second value.
         value: String,
     },
     /// The fractional seconds portion was invalid.
+    #[error("invalid fractional seconds: '{value}'")]
     InvalidFraction {
         /// Rejected fractional-seconds value.
         value: String,
     },
     /// The timezone offset was invalid.
+    #[error("invalid timezone offset: '{value}'")]
     InvalidOffset {
         /// Rejected timezone offset.
         value: String,
     },
     /// The datetime string contained non-numeric characters where digits were expected.
+    #[error("invalid datetime format: {detail}")]
     InvalidFormat {
         /// Description of the format failure.
         detail: String,
     },
 }
-
-impl fmt::Display for InvalidOfxDateTime {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => f.write_str("datetime cannot be empty"),
-            Self::TooShort { length } => {
-                write!(
-                    f,
-                    "datetime too short ({length} chars), minimum is 8 (YYYYMMDD)"
-                )
-            }
-            Self::InvalidYear { value } => {
-                write!(f, "invalid year: '{value}'")
-            }
-            Self::InvalidMonth { value } => {
-                write!(f, "invalid month: '{value}'")
-            }
-            Self::InvalidDay { value } => {
-                write!(f, "invalid day: '{value}'")
-            }
-            Self::InvalidHour { value } => {
-                write!(f, "invalid hour: '{value}'")
-            }
-            Self::InvalidMinute { value } => {
-                write!(f, "invalid minute: '{value}'")
-            }
-            Self::InvalidSecond { value } => {
-                write!(f, "invalid second: '{value}'")
-            }
-            Self::InvalidFraction { value } => {
-                write!(f, "invalid fractional seconds: '{value}'")
-            }
-            Self::InvalidOffset { value } => {
-                write!(f, "invalid timezone offset: '{value}'")
-            }
-            Self::InvalidFormat { detail } => {
-                write!(f, "invalid datetime format: {detail}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InvalidOfxDateTime {}
 
 /// Parse exactly `n` digits from `s` starting at `offset`, returning the numeric value.
 fn parse_digits(
@@ -284,11 +252,15 @@ impl FromStr for OfxDateTime {
         let (datetime_part, offset) =
             s.find('[')
                 .map_or(Ok((s, UtcOffset::UTC)), |bracket_start| {
-                    let bracket_end =
-                        s.find(']')
-                            .ok_or_else(|| InvalidOfxDateTime::InvalidOffset {
-                                value: s[bracket_start..].to_owned(),
-                            })?;
+                    // Search from the opening bracket. Searching the whole
+                    // string could find a closing bracket before the opening
+                    // one and make the slices below panic on malformed input.
+                    let bracket_end = s[bracket_start..]
+                        .find(']')
+                        .map(|relative_end| bracket_start + relative_end)
+                        .ok_or_else(|| InvalidOfxDateTime::InvalidOffset {
+                            value: s[bracket_start..].to_owned(),
+                        })?;
                     let bracket_content = &s[bracket_start + 1..bracket_end];
                     let offset = parse_offset(bracket_content)?;
                     Ok((&s[..bracket_start], offset))
@@ -547,6 +519,15 @@ mod tests {
     #[test]
     fn parse_garbage_returns_error() {
         assert!("abcdefgh".parse::<OfxDateTime>().is_err());
+    }
+
+    #[test]
+    fn malformed_brackets_return_errors_without_panicking() {
+        for value in ["20230115]x[1]", "20230115[", "20230115[]"] {
+            let result = std::panic::catch_unwind(|| value.parse::<OfxDateTime>());
+            assert!(result.is_ok(), "datetime parser panicked for {value:?}");
+            assert!(result.expect("panic was checked").is_err());
+        }
     }
 
     #[test]

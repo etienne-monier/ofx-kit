@@ -16,16 +16,19 @@ impl CurrencyCode {
 }
 
 /// Error returned when parsing an invalid currency code.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum InvalidCurrencyCode {
     /// The input string was empty.
+    #[error("currency code cannot be empty")]
     Empty,
     /// The input string was not exactly 3 characters.
+    #[error("currency code must be exactly 3 characters, got {length}")]
     WrongLength {
         /// Number of characters received.
         length: usize,
     },
     /// The input string contained a non-uppercase-ASCII character.
+    #[error("currency code contains invalid character '{character}' at position {position}")]
     InvalidCharacter {
         /// Rejected character.
         character: char,
@@ -33,31 +36,6 @@ pub enum InvalidCurrencyCode {
         position: usize,
     },
 }
-
-impl fmt::Display for InvalidCurrencyCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => f.write_str("currency code cannot be empty"),
-            Self::WrongLength { length } => {
-                write!(
-                    f,
-                    "currency code must be exactly 3 characters, got {length}"
-                )
-            }
-            Self::InvalidCharacter {
-                character,
-                position,
-            } => {
-                write!(
-                    f,
-                    "currency code contains invalid character '{character}' at position {position}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for InvalidCurrencyCode {}
 
 impl FromStr for CurrencyCode {
     type Err = InvalidCurrencyCode;

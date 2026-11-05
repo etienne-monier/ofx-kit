@@ -16,22 +16,11 @@ impl OfxBoolean {
 }
 
 /// Error returned when parsing an invalid OFX boolean string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid OFX boolean '{value}': expected 'Y' or 'N'")]
 pub struct InvalidOfxBoolean {
     value: String,
 }
-
-impl fmt::Display for InvalidOfxBoolean {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "invalid OFX boolean '{}': expected 'Y' or 'N'",
-            self.value
-        )
-    }
-}
-
-impl std::error::Error for InvalidOfxBoolean {}
 
 impl FromStr for OfxBoolean {
     type Err = InvalidOfxBoolean;

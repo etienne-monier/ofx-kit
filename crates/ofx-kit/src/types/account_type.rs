@@ -18,19 +18,12 @@ pub enum AccountType {
 }
 
 /// Error returned when parsing an invalid account type string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid account type: '{value}'")]
 pub struct InvalidAccountType {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidAccountType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid account type: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidAccountType {}
 
 impl FromStr for AccountType {
     type Err = InvalidAccountType;

@@ -16,19 +16,12 @@ pub enum Severity {
 }
 
 /// Error returned when parsing an invalid severity string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid severity: '{value}'")]
 pub struct InvalidSeverity {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidSeverity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid severity: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidSeverity {}
 
 impl FromStr for Severity {
     type Err = InvalidSeverity;

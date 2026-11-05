@@ -107,7 +107,13 @@ pub struct SourcePosition {
 /// Computes a source position for a byte offset in UTF-8 text.
 #[must_use]
 pub(crate) fn position_at(source: &str, byte_offset: usize) -> SourcePosition {
-    let offset = byte_offset.min(source.len());
+    let mut offset = byte_offset.min(source.len());
+    // Parser offsets are normally UTF-8 boundaries, but heuristic offsets
+    // (for example those computed for skipped tags) may not be. Never slice
+    // a string at the middle of a code point: diagnostics must not panic.
+    while offset > 0 && !source.is_char_boundary(offset) {
+        offset -= 1;
+    }
     let prefix = &source[..offset];
     let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
     let column = prefix.rsplit('\n').next().map_or(0, str::len) + 1;
@@ -280,5 +286,14 @@ mod tests {
             ElementPath::from(["OFX", "STMTRS"]),
         );
         assert_eq!(warning.to_string(), "unknown element <FOO> at OFX/STMTRS");
+    }
+
+    #[test]
+    fn position_at_clamps_non_boundary_offsets() {
+        let position = position_at("é\nvalue", 1);
+
+        assert_eq!(position.byte_offset, 0);
+        assert_eq!(position.line, 1);
+        assert_eq!(position.column, 1);
     }
 }

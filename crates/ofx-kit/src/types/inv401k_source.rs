@@ -24,19 +24,12 @@ pub enum Inv401kSource {
 }
 
 /// Error returned when parsing an invalid 401(k) source string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid 401(k) source: '{value}'")]
 pub struct InvalidInv401kSource {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidInv401kSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid 401(k) source: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidInv401kSource {}
 
 impl FromStr for Inv401kSource {
     type Err = InvalidInv401kSource;

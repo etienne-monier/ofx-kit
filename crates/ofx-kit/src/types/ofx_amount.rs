@@ -37,40 +37,24 @@ impl OfxAmount {
 }
 
 /// Error returned when parsing an invalid OFX amount string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum InvalidOfxAmount {
     /// The input string was empty.
+    #[error("amount cannot be empty")]
     Empty,
     /// The input string exceeded the maximum length of 32 characters.
+    #[error("amount exceeds maximum length of 32 characters: {length}")]
     TooLong {
         /// Length of the rejected amount string.
         length: usize,
     },
     /// The input string could not be parsed as a decimal number.
+    #[error("amount is not a valid number: '{value}'")]
     NotANumber {
         /// Rejected input value.
         value: String,
     },
 }
-
-impl fmt::Display for InvalidOfxAmount {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => f.write_str("amount cannot be empty"),
-            Self::TooLong { length } => {
-                write!(
-                    f,
-                    "amount exceeds maximum length of 32 characters: {length}"
-                )
-            }
-            Self::NotANumber { value } => {
-                write!(f, "amount is not a valid number: '{value}'")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InvalidOfxAmount {}
 
 impl FromStr for OfxAmount {
     type Err = InvalidOfxAmount;

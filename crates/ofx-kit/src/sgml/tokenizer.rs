@@ -155,6 +155,7 @@ impl<'a> Tokenizer<'a> {
         })
     }
 
+    /// Return the next char as a Text token
     fn next_literal_less_than(&mut self) -> Token<'a> {
         let start = self.pos;
         self.pos += 1;
@@ -195,25 +196,33 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos >= self.input.len() {
+            // Reached end of in
             return None;
         }
 
         if self.input.as_bytes()[self.pos] == b'&' {
+            // Reached an entity
             return Some(self.next_entity());
         }
 
         if self.input.as_bytes()[self.pos] != b'<' {
+            // Looks like a text
             return self.next_text();
         }
 
+        // The input starts with `<`
         let start = self.pos;
 
         if !looks_like_markup(&self.input[start..]) {
+            // starting with `<`, yet does not seem to be markup
+            // Add a text token with `<`.
             return Some(self.next_literal_less_than());
         }
 
         if self.input[start..].starts_with("<!--") {
+            // Catched a comment `<-- .... -->`
             let Some(end_index) = self.input[start + 4..].find("-->") else {
+                // Did not find end of comment
                 let end = self.input.len();
                 return Some(self.emit_malformed(
                     start,
@@ -223,6 +232,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                     },
                 ));
             };
+            // Found end of comment
             let end = start + 4 + end_index + 3;
             self.pos = end;
             return Some(Token::Comment {
@@ -232,7 +242,9 @@ impl<'a> Iterator for Tokenizer<'a> {
         }
 
         if self.input[start..].starts_with("<?") {
+            // Catched a processing instruction `<? .... ?>`
             let Some(end_index) = self.input[start + 2..].find("?>") else {
+                // Unterminated instruction
                 let end = self.input.len();
                 return Some(self.emit_malformed(
                     start,
@@ -242,6 +254,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                     },
                 ));
             };
+            // Found end of processing instruction
             let end = start + 2 + end_index + 2;
             self.pos = end;
             return Some(Token::ProcessingInstruction {
@@ -250,7 +263,9 @@ impl<'a> Iterator for Tokenizer<'a> {
             });
         }
 
+        // A regular tag is found (opening or closing, whatever)
         let Some(tag_end) = find_tag_end(&self.input[start + 1..]) else {
+            // No end tag found (`>` char)
             let end = self.input.len();
             return Some(self.emit_malformed(
                 start,
@@ -261,13 +276,17 @@ impl<'a> Iterator for Tokenizer<'a> {
             ));
         };
 
+        // A well-formed tag.
+        // It just starts with `<` and finishes with `>`
         let end = start + 1 + tag_end + 1;
         let content = &self.input[start + 1..start + 1 + tag_end];
         self.pos = end;
 
         if let Some(close) = content.strip_prefix('/') {
+            // This is a closing tag
             let name = close.trim();
             if name.is_empty() {
+                // Found `</ >`
                 return Some(self.emit_malformed(
                     start,
                     end,
@@ -277,6 +296,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 ));
             }
             if !is_valid_name(name) {
+                // Invalid name (e.g. `1234` or `-alpha`)
                 return Some(self.emit_malformed(
                     start,
                     end,
@@ -285,13 +305,16 @@ impl<'a> Iterator for Tokenizer<'a> {
                     },
                 ));
             }
+            // The closing tag is valid
             return Some(Token::CloseTag {
                 name,
                 span: self.span(start, end),
             });
         }
 
+        // Not a closing tag
         if content.starts_with('!') {
+            // A declaration, such as `<!DOCTYPE ...>`
             return Some(Token::Declaration {
                 raw: &self.input[start..end],
                 span: self.span(start, end),
@@ -308,6 +331,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         let name = name_part.split_whitespace().next().unwrap_or("");
 
         if name.is_empty() {
+            // Empty tag (eg `< >`)
             return Some(self.emit_malformed(
                 start,
                 end,
@@ -317,7 +341,8 @@ impl<'a> Iterator for Tokenizer<'a> {
             ));
         }
 
-        if name_part != name || !is_valid_name(name) {
+        if !is_valid_name(name) {
+            // Invalid name
             return Some(self.emit_malformed(
                 start,
                 end,
@@ -327,6 +352,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             ));
         }
 
+        // This is finaly a valid open tag
         Some(Token::OpenTag {
             name,
             raw: &self.input[start..end],
@@ -353,17 +379,23 @@ fn is_entity_name_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '#' | '_' | ':' | '-' | '.')
 }
 
+/// Return true if the input starts with something looking like a markup
 fn looks_like_markup(input: &str) -> bool {
     let Some(rest) = input.strip_prefix('<') else {
+        // Doesn't start with `<`
         return false;
     };
     match rest.chars().next() {
+        // Starts with `</`
         Some('/') => rest[1..]
             .chars()
             .find(|ch| !ch.is_ascii_whitespace())
             .is_some_and(is_name_start),
+        // Starts with `<?` or `<!`
         Some('?') | Some('!') => true,
+        // Starts with `<=` or `<\w` or `<\d`, etc
         Some(ch) => is_name_start(ch) || ch.is_ascii_digit() || ch == '=',
+        // The input was just `<`
         None => false,
     }
 }
@@ -378,6 +410,7 @@ fn is_valid_name(name: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | ':' | '-' | '.'))
 }
 
+/// Return the position of the tag end, by detecting closing `>` char (handling quotes for attributes).
 fn find_tag_end(rest: &str) -> Option<usize> {
     let mut quote = None;
     for (index, ch) in rest.char_indices() {

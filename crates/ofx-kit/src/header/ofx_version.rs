@@ -32,19 +32,12 @@ impl OfxVersion {
 }
 
 /// Error returned when parsing an invalid OFX version string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid OFX version: '{value}'")]
 pub struct InvalidOfxVersion {
     /// The unrecognized value.
     pub value: String,
 }
-
-impl fmt::Display for InvalidOfxVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid OFX version: '{}'", self.value)
-    }
-}
-
-impl std::error::Error for InvalidOfxVersion {}
 
 impl FromStr for OfxVersion {
     type Err = InvalidOfxVersion;
@@ -67,12 +60,13 @@ impl FromStr for OfxVersion {
         let make_err = || InvalidOfxVersion {
             value: s.to_owned(),
         };
-        let major =
-            u8::try_from(chars[0].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
-        let minor =
-            u8::try_from(chars[1].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
-        let patch =
-            u8::try_from(chars[2].to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?;
+        let convert = |_char: char| -> Result<u8, _> {
+            Ok(u8::try_from(_char.to_digit(10).ok_or_else(make_err)?).map_err(|_| make_err())?)
+        };
+
+        let major = convert(chars[0])?;
+        let minor = convert(chars[1])?;
+        let patch = convert(chars[2])?;
 
         Ok(Self {
             major,

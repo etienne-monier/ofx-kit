@@ -11,14 +11,16 @@ pub use reader::OfxReader;
 
 /// The reason an XML-level parsing operation failed.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum XmlErrorKind {
     /// The XML document was malformed.
+    #[error("malformed XML: {message}")]
     MalformedXml {
         /// Description of the XML error.
         message: String,
     },
     /// An unexpected element was encountered.
+    #[error("expected element <{expected}>, found <{found}>")]
     UnexpectedElement {
         /// Element that was expected.
         expected: String,
@@ -26,6 +28,7 @@ pub enum XmlErrorKind {
         found: String,
     },
     /// A required element was missing from its parent.
+    #[error("missing required element <{element}> in <{parent}>")]
     MissingElement {
         /// Parent aggregate.
         parent: String,
@@ -33,11 +36,13 @@ pub enum XmlErrorKind {
         element: String,
     },
     /// An element outside the supported OFX subset was encountered.
+    #[error("unknown element <{name}>")]
     UnknownElement {
         /// Unknown element name.
         name: String,
     },
     /// An element contained invalid text content.
+    #[error("invalid content in <{element}>: '{value}' ({reason})")]
     InvalidContent {
         /// Element containing invalid content.
         element: String,
@@ -148,30 +153,6 @@ impl XmlError {
             },
             path,
         )
-    }
-}
-
-impl fmt::Display for XmlErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MalformedXml { message } => {
-                write!(f, "malformed XML: {message}")
-            }
-            Self::UnexpectedElement { expected, found } => {
-                write!(f, "expected element <{expected}>, found <{found}>")
-            }
-            Self::MissingElement { parent, element } => {
-                write!(f, "missing required element <{element}> in <{parent}>")
-            }
-            Self::UnknownElement { name } => write!(f, "unknown element <{name}>"),
-            Self::InvalidContent {
-                element,
-                value,
-                reason,
-            } => {
-                write!(f, "invalid content in <{element}>: '{value}' ({reason})")
-            }
-        }
     }
 }
 

@@ -86,11 +86,14 @@ pub fn parse_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let trimmed = input.trim_start();
 
     if trimmed.starts_with("<?OFX") {
+        // Identified as v2
         parse_xml_pi_header(trimmed)
     } else if trimmed.starts_with("OFXHEADER:") {
+        // Identified as v1
         parse_sgml_header(trimmed)
     } else {
-        // Try to find the OFX body directly (some files omit headers or use XML declaration first)
+        // Try to find the OFX body directly
+        // (some files omit headers or use XML declaration first)
         trimmed
             .find("<OFX>")
             .or_else(|| trimmed.find("<OFX "))
@@ -140,17 +143,8 @@ fn parse_xml_pi_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let new_uid = extract_pi_attribute(pi_content, "NEWFILEUID").unwrap_or("NONE");
     let encoding = extract_pi_attribute(pi_content, "ENCODING").map(str::to_owned);
 
-    let version: OfxVersion = version_str
-        .parse()
-        .map_err(|_| HeaderError::InvalidVersion {
-            value: version_str.to_owned(),
-        })?;
-    let security: SecurityLevel =
-        security_str
-            .parse()
-            .map_err(|_| HeaderError::InvalidSecurity {
-                value: security_str.to_owned(),
-            })?;
+    let version: OfxVersion = version_str.parse()?;
+    let security: SecurityLevel = security_str.parse()?;
 
     Ok((
         OfxHeader {
@@ -200,6 +194,9 @@ fn extract_pi_attribute<'a>(content: &'a str, name: &str) -> Option<&'a str> {
 /// OLDFILEUID:NONE
 /// NEWFILEUID:NONE
 /// ```
+///
+/// Returns the Header data and remaining content.
+///
 fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
     let mut version_str: Option<&str> = None;
     let mut security_str: Option<&str> = None;
@@ -248,17 +245,8 @@ fn parse_sgml_header(input: &str) -> Result<(OfxHeader, &str), HeaderError> {
         attribute: "SECURITY",
     })?;
 
-    let version: OfxVersion = version_raw
-        .parse()
-        .map_err(|_| HeaderError::InvalidVersion {
-            value: version_raw.to_owned(),
-        })?;
-    let security: SecurityLevel =
-        security_raw
-            .parse()
-            .map_err(|_| HeaderError::InvalidSecurity {
-                value: security_raw.to_owned(),
-            })?;
+    let version: OfxVersion = version_raw.parse()?;
+    let security: SecurityLevel = security_raw.parse()?;
 
     Ok((
         OfxHeader {

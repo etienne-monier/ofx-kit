@@ -69,39 +69,17 @@ pub struct ConvertedSource {
 
 /// An error produced while converting an OFX source.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConversionError {
     /// The OFX header could not be read.
-    Header(HeaderError),
+    #[error("header error: {0}")]
+    Header(#[from] HeaderError),
     /// The input declares compression that this crate cannot decode.
+    #[error("compressed OFX input is not supported")]
     UnsupportedCompression,
     /// The generated document is not well-formed XML.
+    #[error("generated XML is invalid: {0}")]
     InvalidXml(String),
-}
-
-impl fmt::Display for ConversionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Header(error) => write!(f, "header error: {error}"),
-            Self::UnsupportedCompression => f.write_str("compressed OFX input is not supported"),
-            Self::InvalidXml(error) => write!(f, "generated XML is invalid: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for ConversionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Header(error) => Some(error),
-            Self::UnsupportedCompression | Self::InvalidXml(_) => None,
-        }
-    }
-}
-
-impl From<HeaderError> for ConversionError {
-    fn from(error: HeaderError) -> Self {
-        Self::Header(error)
-    }
 }
 
 /// Convert an OFX source from bytes to UTF-8 XML.

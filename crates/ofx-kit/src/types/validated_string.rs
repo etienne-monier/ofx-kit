@@ -31,11 +31,13 @@ macro_rules! validated_string {
         }
 
         /// Error returned when the string value fails validation.
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
         pub enum $error_name {
             /// The input was empty.
+            #[error("{} cannot be empty", $display_name)]
             Empty,
             /// The input exceeded the maximum allowed length.
+            #[error("{} exceeds maximum length of {} characters: {length}", $display_name, $max_len)]
             TooLong {
                 /// Length of the input string.
                 length: usize,
@@ -43,26 +45,6 @@ macro_rules! validated_string {
                 max: usize,
             },
         }
-
-        impl core::fmt::Display for $error_name {
-            #[allow(clippy::use_self)]
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                match self {
-                    $error_name::Empty => {
-                        write!(f, "{} cannot be empty", $display_name)
-                    }
-                    $error_name::TooLong { length, max } => {
-                        write!(
-                            f,
-                            "{} exceeds maximum length of {} characters: {}",
-                            $display_name, max, length
-                        )
-                    }
-                }
-            }
-        }
-
-        impl std::error::Error for $error_name {}
 
         impl core::str::FromStr for $type_name {
             type Err = $error_name;
