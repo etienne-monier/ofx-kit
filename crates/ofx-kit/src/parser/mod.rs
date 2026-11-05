@@ -113,6 +113,16 @@ impl ParseOptions {
 ///
 /// Returns `OfxError` if the header is missing or malformed, the XML is invalid,
 /// or required OFX elements are missing.
+///
+/// # Example
+///
+/// ```
+/// let input = r#"<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+/// <OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS><DTSERVER>20230115120000</DTSERVER><LANGUAGE>ENG</LANGUAGE></SONRS></SIGNONMSGSRSV1></OFX>"#;
+/// let document = ofx_kit::parse(input)?;
+/// assert!(document.signon().status().is_success());
+/// # Ok::<(), ofx_kit::OfxError>(())
+/// ```
 pub fn parse(input: &str) -> Result<OfxDocument, OfxError> {
     parse_with_warnings(input).map(|parsed| parsed.document)
 }
@@ -124,6 +134,10 @@ pub fn parse(input: &str) -> Result<OfxDocument, OfxError> {
 ///
 /// Returns `OfxError` if the header is missing or malformed, the XML is invalid,
 /// or required OFX elements are missing.
+///
+/// Use this function when the source is already UTF-8 text and diagnostics are
+/// useful to the caller. For raw file bytes, use
+/// [`parse_bytes_with_warnings`].
 pub fn parse_with_warnings(input: &str) -> Result<ParsedDocument, OfxError> {
     parse_with_options(input, &ParseOptions::default())
 }
@@ -171,6 +185,10 @@ pub fn parse_with_options(input: &str, options: &ParseOptions) -> Result<ParsedD
 /// Decodes and parses an OFX document from raw bytes.
 ///
 /// Warnings are discarded; use [`parse_bytes_with_warnings`] to receive them.
+///
+/// The byte-oriented API detects supported OFX encodings before parsing. Use
+/// [`crate::decode`] when the decoded text or encoding metadata is needed
+/// independently of parsing.
 pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
     parse_bytes_with_warnings(input).map(|parsed| parsed.document)
 }
@@ -179,6 +197,16 @@ pub fn parse_bytes(input: &[u8]) -> Result<OfxDocument, OfxError> {
 /// warnings encountered while parsing.
 ///
 /// Decoding warnings are available separately through [`crate::decode`].
+///
+/// # Example
+///
+/// ```
+/// let input = br#"<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+/// <OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS><DTSERVER>20230115120000</DTSERVER><LANGUAGE>ENG</LANGUAGE></SONRS></SIGNONMSGSRSV1></OFX>"#;
+/// let parsed = ofx_kit::parse_bytes_with_warnings(input)?;
+/// assert!(parsed.document.signon().status().is_success());
+/// # Ok::<(), ofx_kit::OfxError>(())
+/// ```
 pub fn parse_bytes_with_warnings(input: &[u8]) -> Result<ParsedDocument, OfxError> {
     parse_bytes_with_options(input, &ParseOptions::default())
 }

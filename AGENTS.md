@@ -20,6 +20,7 @@ implementation.
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked`
 - `cargo deny check` — configuration is in `deny.toml`.
+- `npm run check:links --prefix docs` — validate relative documentation links.
 
 CI validates formatting, Clippy, tests, Rust 1.90 MSRV, public/private docs,
 and cargo-deny. Run the relevant checks before claiming validation.
@@ -63,8 +64,9 @@ and cargo-deny. Run the relevant checks before claiming validation.
   `crates/ofx-kit/tests/` and use fixtures from `crates/ofx-kit/tests/fixtures/`
   via `include_str!`.
 - `parse_test_vectors.rs` prints a fixture report only with `--nocapture`.
-- `proptest` is declared as a dev-dependency but is not currently used.
-  There is no CLI, raw-byte encoding suite, or fuzzing yet.
+- The workspace includes the `ofx-kit-cli` package and its `ofx` binary.
+  Raw-byte encoding coverage and fuzzing are present; `proptest` remains
+  declared as a dev-dependency but is not currently used.
 
 ## Repository quirks
 

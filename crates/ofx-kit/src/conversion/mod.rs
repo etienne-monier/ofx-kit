@@ -83,6 +83,18 @@ pub enum ConversionError {
 }
 
 /// Convert an OFX source from bytes to UTF-8 XML.
+///
+/// This performs structural conversion and does not serialize through the
+/// typed [`crate::OfxDocument`] model, so unknown elements are retained.
+///
+/// # Example
+///
+/// ```
+/// let source = r#"<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?><OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS><DTSERVER>20230115120000</DTSERVER><LANGUAGE>ENG</LANGUAGE></SONRS></SIGNONMSGSRSV1></OFX>"#;
+/// let converted = ofx_kit::convert_bytes(source.as_bytes(), &Default::default())?;
+/// assert!(converted.xml.contains("<OFX>"));
+/// # Ok::<(), ofx_kit::ConversionError>(())
+/// ```
 pub fn convert_bytes(
     input: &[u8],
     options: &ConversionOptions,
@@ -99,6 +111,10 @@ pub fn convert_bytes(
 }
 
 /// Convert an already decoded OFX source to UTF-8 XML.
+///
+/// Use this variant when the source is already a valid UTF-8 string. Use
+/// [`convert_bytes`] for file or network input so encoding detection and
+/// decoding warnings are preserved.
 pub fn convert_str(
     input: &str,
     options: &ConversionOptions,

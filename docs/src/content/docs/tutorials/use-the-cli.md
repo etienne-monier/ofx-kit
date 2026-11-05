@@ -3,7 +3,14 @@ title: Use the CLI
 description: Validate, inspect, and decode OFX files.
 ---
 
-Install and run the `ofx` binary, then validate a file before importing it:
+The CLI is provided by the `ofx-kit-cli` workspace package and installs the
+`ofx` binary. From a checkout of the repository, install it with:
+
+```sh
+cargo install --path crates/ofx-cli
+```
+
+Then validate a file before importing it:
 
 ```sh
 ofx validate statement.ofx

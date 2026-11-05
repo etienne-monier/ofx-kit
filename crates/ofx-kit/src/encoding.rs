@@ -79,6 +79,14 @@ impl fmt::Display for DetectedEncoding {
 
 /// Decodes raw OFX bytes according to the roadmap detection order.
 #[must_use]
+///
+/// # Example
+///
+/// ```
+/// let decoded = ofx_kit::decode(b"OFXHEADER:100\nVERSION:102\n");
+/// assert_eq!(decoded.encoding, ofx_kit::DetectedEncoding::Utf8);
+/// assert!(decoded.text.starts_with("OFXHEADER"));
+/// ```
 pub fn decode(bytes: &[u8]) -> DecodedSource {
     let mut warnings = Vec::new();
     if is_compressed(bytes) {
