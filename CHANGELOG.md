@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-No changes yet.
+## [0.3.1] - 2026-11-05
+
+- Improve tolerant OFX byte decoding for misleading UTF-8/ASCII declarations,
+  BOM-less UTF-16 SGML bodies, conflicting `ENCODING`/`CHARSET` fields, and
+  legacy numeric code-page labels.
 
 ## [0.3.0] - 2026-11-05
 

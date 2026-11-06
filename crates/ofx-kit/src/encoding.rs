@@ -92,16 +92,46 @@ pub fn decode(bytes: &[u8]) -> DecodedSource {
     if is_compressed(bytes) {
         warnings.push(DecodeWarning::CompressedInput);
     }
-    let (encoding, skip) = detect(bytes, &mut warnings);
-    let (text, malformed) = decode_with(bytes.get(skip..).unwrap_or_default(), &encoding);
+    let plan = detect(bytes, &mut warnings);
+    let (mut text, malformed) = if let Some(split_at) = plan.split_at {
+        let header = String::from_utf8_lossy(bytes.get(..split_at).unwrap_or_default());
+        let (body, malformed) =
+            decode_with(bytes.get(split_at..).unwrap_or_default(), &plan.encoding);
+        (format!("{header}{body}"), malformed)
+    } else {
+        decode_with(bytes.get(plan.skip..).unwrap_or_default(), &plan.encoding)
+    };
+    if plan.retry_windows1252 {
+        let (fallback, fallback_malformed) = decode_with(bytes, &DetectedEncoding::Windows1252);
+        text = fallback;
+        if fallback_malformed {
+            warnings.push(DecodeWarning::MalformedInput {
+                encoding: DetectedEncoding::Windows1252,
+            });
+        }
+    }
+    if text.starts_with('\u{feff}') {
+        text.remove(0);
+    }
     if malformed {
-        warnings.push(DecodeWarning::MalformedInput {
-            encoding: encoding.clone(),
-        });
+        if plan.retry_windows1252 {
+            warnings.push(DecodeWarning::DeclaredEncoding {
+                declared: plan.declared.unwrap_or_else(|| "UTF-8".to_owned()),
+                detected: DetectedEncoding::Windows1252,
+            });
+        } else {
+            warnings.push(DecodeWarning::MalformedInput {
+                encoding: plan.encoding.clone(),
+            });
+        }
     }
     DecodedSource {
         text,
-        encoding,
+        encoding: if plan.retry_windows1252 {
+            DetectedEncoding::Windows1252
+        } else {
+            plan.encoding
+        },
         warnings,
     }
 }
@@ -110,39 +140,196 @@ pub(crate) fn is_compressed(bytes: &[u8]) -> bool {
     bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"\x1f\x8b")
 }
 
-fn detect(bytes: &[u8], warnings: &mut Vec<DecodeWarning>) -> (DetectedEncoding, usize) {
+struct DecodePlan {
+    encoding: DetectedEncoding,
+    skip: usize,
+    split_at: Option<usize>,
+    retry_windows1252: bool,
+    declared: Option<String>,
+}
+
+#[derive(Default)]
+struct Declarations {
+    xml_encoding: Option<String>,
+    sgml_encoding: Option<String>,
+    sgml_charset: Option<String>,
+}
+
+fn detect(bytes: &[u8], warnings: &mut Vec<DecodeWarning>) -> DecodePlan {
     if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
         warn_about_bom_conflict(&bytes[3..], &DetectedEncoding::Utf8, warnings);
-        return (DetectedEncoding::Utf8, 3);
+        return DecodePlan {
+            encoding: DetectedEncoding::Utf8,
+            skip: 3,
+            split_at: None,
+            retry_windows1252: false,
+            declared: None,
+        };
     }
     if bytes.starts_with(&[0xff, 0xfe]) {
         warn_about_bom_conflict(&bytes[2..], &DetectedEncoding::Utf16Le, warnings);
-        return (DetectedEncoding::Utf16Le, 2);
+        return DecodePlan {
+            encoding: DetectedEncoding::Utf16Le,
+            skip: 2,
+            split_at: None,
+            retry_windows1252: false,
+            declared: None,
+        };
     }
     if bytes.starts_with(&[0xfe, 0xff]) {
         warn_about_bom_conflict(&bytes[2..], &DetectedEncoding::Utf16Be, warnings);
-        return (DetectedEncoding::Utf16Be, 2);
+        return DecodePlan {
+            encoding: DetectedEncoding::Utf16Be,
+            skip: 2,
+            split_at: None,
+            retry_windows1252: false,
+            declared: None,
+        };
     }
-    if let Some(declared) = declaration(bytes) {
-        if let Some(encoding) = encoding_name(&declared) {
-            return (encoding, 0);
-        }
-        warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(declared));
+
+    let declarations = declarations(bytes);
+    if let Some(declared) = declarations.xml_encoding.as_ref() {
+        return resolve_declared(bytes, declared, warnings);
     }
-    if let Some(declared) = sgml_declaration(bytes) {
-        if declared.eq_ignore_ascii_case("UNICODE") {
-            return (DetectedEncoding::Utf16Le, 0);
+    if let Some(declared) = declarations.sgml_encoding.as_ref() {
+        if matches!(
+            declared.to_ascii_uppercase().as_str(),
+            "UNICODE" | "UTF-16" | "UTF-16LE"
+        ) {
+            return utf16_header_plan(bytes, DetectedEncoding::Utf16Le, Some(declared.clone()));
         }
-        if let Some(encoding) = encoding_name(&declared) {
-            return (encoding, 0);
+        if declared.eq_ignore_ascii_case("UTF-16BE") {
+            return utf16_header_plan(bytes, DetectedEncoding::Utf16Be, Some(declared.clone()));
         }
-        warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(declared));
+        if is_utf8_or_ascii(declared) {
+            if declared.eq_ignore_ascii_case("USASCII") || declared.eq_ignore_ascii_case("US-ASCII")
+            {
+                if let Some(charset) = declarations.sgml_charset.as_ref()
+                    && let Some(encoding) = encoding_name(charset)
+                {
+                    return DecodePlan {
+                        encoding,
+                        skip: 0,
+                        split_at: None,
+                        retry_windows1252: false,
+                        declared: Some(charset.clone()),
+                    };
+                }
+                if let Some(charset) = declarations.sgml_charset.as_ref() {
+                    warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(charset.clone()));
+                }
+            }
+            return utf8_declared_plan(bytes, declared);
+        }
+        if let Some(encoding) = encoding_name(declared) {
+            return match encoding {
+                DetectedEncoding::Utf16Le | DetectedEncoding::Utf16Be => {
+                    utf16_header_plan(bytes, encoding, Some(declared.clone()))
+                }
+                encoding => DecodePlan {
+                    encoding,
+                    skip: 0,
+                    split_at: None,
+                    retry_windows1252: false,
+                    declared: Some(declared.clone()),
+                },
+            };
+        }
+        warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(declared.clone()));
     }
+
+    if let Some(charset) = declarations.sgml_charset.as_ref() {
+        if let Some(encoding) = encoding_name(charset) {
+            return DecodePlan {
+                encoding,
+                skip: 0,
+                split_at: None,
+                retry_windows1252: false,
+                declared: Some(charset.clone()),
+            };
+        }
+        warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(charset.clone()));
+    }
+
     if core::str::from_utf8(bytes).is_ok() {
-        return (DetectedEncoding::Utf8, 0);
+        return DecodePlan {
+            encoding: DetectedEncoding::Utf8,
+            skip: 0,
+            split_at: None,
+            retry_windows1252: false,
+            declared: None,
+        };
     }
     warnings.push(DecodeWarning::FallbackToWindows1252);
-    (DetectedEncoding::Windows1252, 0)
+    DecodePlan {
+        encoding: DetectedEncoding::Windows1252,
+        skip: 0,
+        split_at: None,
+        retry_windows1252: false,
+        declared: None,
+    }
+}
+
+fn resolve_declared(bytes: &[u8], declared: &str, warnings: &mut Vec<DecodeWarning>) -> DecodePlan {
+    if is_utf8_or_ascii(declared) {
+        return utf8_declared_plan(bytes, declared);
+    }
+    if let Some(encoding) = encoding_name(declared) {
+        return match encoding {
+            DetectedEncoding::Utf16Le | DetectedEncoding::Utf16Be => {
+                utf16_header_plan(bytes, encoding, Some(declared.to_owned()))
+            }
+            encoding => DecodePlan {
+                encoding,
+                skip: 0,
+                split_at: None,
+                retry_windows1252: false,
+                declared: Some(declared.to_owned()),
+            },
+        };
+    }
+    warnings.push(DecodeWarning::UnsupportedDeclaredEncoding(
+        declared.to_owned(),
+    ));
+    DecodePlan {
+        encoding: DetectedEncoding::Utf8,
+        skip: 0,
+        split_at: None,
+        retry_windows1252: core::str::from_utf8(bytes).is_err(),
+        declared: Some(declared.to_owned()),
+    }
+}
+
+fn utf8_declared_plan(bytes: &[u8], declared: &str) -> DecodePlan {
+    DecodePlan {
+        encoding: DetectedEncoding::Utf8,
+        skip: 0,
+        split_at: None,
+        retry_windows1252: core::str::from_utf8(bytes).is_err(),
+        declared: Some(declared.to_owned()),
+    }
+}
+
+fn utf16_header_plan(
+    bytes: &[u8],
+    encoding: DetectedEncoding,
+    declared: Option<String>,
+) -> DecodePlan {
+    let less_than = bytes.iter().position(|byte| *byte == b'<');
+    let split_at = match encoding {
+        DetectedEncoding::Utf16Be => less_than
+            .filter(|position| *position > 0 && bytes[*position - 1] == 0)
+            .map(|position| position - 1)
+            .or(less_than),
+        _ => less_than,
+    };
+    DecodePlan {
+        encoding,
+        skip: 0,
+        split_at,
+        retry_windows1252: false,
+        declared,
+    }
 }
 
 fn warn_about_bom_conflict(
@@ -162,7 +349,11 @@ fn warn_about_bom_conflict(
 }
 
 fn declared_encoding(bytes: &[u8]) -> Option<String> {
-    declaration(bytes).or_else(|| sgml_declaration(bytes))
+    let declarations = declarations(bytes);
+    declarations
+        .xml_encoding
+        .or(declarations.sgml_encoding)
+        .or(declarations.sgml_charset)
 }
 
 fn declaration(bytes: &[u8]) -> Option<String> {
@@ -179,22 +370,36 @@ fn declaration(bytes: &[u8]) -> Option<String> {
     Some(value[1..end].to_owned())
 }
 
-fn sgml_declaration(bytes: &[u8]) -> Option<String> {
+fn declarations(bytes: &[u8]) -> Declarations {
     let prefix = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]);
-    let mut encoding = None;
-    let mut charset = None;
+    let mut declarations = Declarations {
+        xml_encoding: declaration(bytes),
+        ..Declarations::default()
+    };
     for line in prefix.lines() {
-        if let Some((key, value)) = line.trim().split_once(':')
-            && !value.trim().eq_ignore_ascii_case("NONE")
-        {
+        if let Some((key, value)) = line.trim().split_once(':') {
+            let value = value.trim();
+            if value.is_empty() || value.eq_ignore_ascii_case("NONE") {
+                continue;
+            }
             if key.eq_ignore_ascii_case("ENCODING") {
-                encoding = Some(value.trim().to_owned());
+                declarations.sgml_encoding = Some(value.to_owned());
             } else if key.eq_ignore_ascii_case("CHARSET") {
-                charset = Some(value.trim().to_owned());
+                declarations.sgml_charset = Some(value.to_owned());
             }
         }
     }
-    charset.or(encoding)
+    declarations
+}
+
+fn is_utf8_or_ascii(name: &str) -> bool {
+    matches!(
+        name.trim()
+            .to_ascii_lowercase()
+            .replace(['_', ' '], "-")
+            .as_str(),
+        "utf-8" | "utf8" | "ascii" | "us-ascii" | "usascii"
+    )
 }
 
 fn encoding_name(name: &str) -> Option<DetectedEncoding> {
@@ -203,11 +408,39 @@ fn encoding_name(name: &str) -> Option<DetectedEncoding> {
         "utf-8" | "utf8" | "ascii" | "us-ascii" | "usascii" => Some(DetectedEncoding::Utf8),
         "utf-16" | "utf-16le" | "unicode" => Some(DetectedEncoding::Utf16Le),
         "utf-16be" => Some(DetectedEncoding::Utf16Be),
-        "windows-1252" | "cp1252" | "1252" | "iso-8859-1" => Some(DetectedEncoding::Windows1252),
-        "big5" | "cp950" => Some(DetectedEncoding::Big5),
-        "gb18030" | "gbk" | "cp936" => Some(DetectedEncoding::Gb18030),
+        "windows-1252" | "cp1252" | "1252" | "iso-8859-1" | "iso8859-1" | "iso88591" => {
+            Some(DetectedEncoding::Windows1252)
+        }
+        "windows-1250" | "cp1250" | "1250" => {
+            Some(DetectedEncoding::Other("windows-1250".to_owned()))
+        }
+        "windows-1251" | "cp1251" | "1251" => {
+            Some(DetectedEncoding::Other("windows-1251".to_owned()))
+        }
+        "windows-1253" | "cp1253" | "1253" => {
+            Some(DetectedEncoding::Other("windows-1253".to_owned()))
+        }
+        "windows-1254" | "cp1254" | "1254" => {
+            Some(DetectedEncoding::Other("windows-1254".to_owned()))
+        }
+        "windows-1255" | "cp1255" | "1255" => {
+            Some(DetectedEncoding::Other("windows-1255".to_owned()))
+        }
+        "windows-1256" | "cp1256" | "1256" => {
+            Some(DetectedEncoding::Other("windows-1256".to_owned()))
+        }
+        "windows-1257" | "cp1257" | "1257" => {
+            Some(DetectedEncoding::Other("windows-1257".to_owned()))
+        }
+        "windows-1258" | "cp1258" | "1258" => {
+            Some(DetectedEncoding::Other("windows-1258".to_owned()))
+        }
+        "windows-874" | "cp874" | "874" => Some(DetectedEncoding::Other("windows-874".to_owned())),
+        "10000" | "mac" | "macintosh" => Some(DetectedEncoding::Other("macintosh".to_owned())),
+        "big5" | "cp950" | "950" => Some(DetectedEncoding::Big5),
+        "gb18030" | "gbk" | "cp936" | "936" => Some(DetectedEncoding::Gb18030),
         "shift-jis" | "sjis" | "cp932" | "932" => Some(DetectedEncoding::ShiftJis),
-        "euc-kr" | "cp949" => Some(DetectedEncoding::EucKr),
+        "euc-kr" | "cp949" | "949" => Some(DetectedEncoding::EucKr),
         _ => None,
     }
 }
@@ -224,7 +457,8 @@ fn decode_with(bytes: &[u8], encoding: &DetectedEncoding) -> (String, bool) {
             DetectedEncoding::Gb18030 => encoding_rs::GB18030,
             DetectedEncoding::ShiftJis => encoding_rs::SHIFT_JIS,
             DetectedEncoding::EucKr => encoding_rs::EUC_KR,
-            DetectedEncoding::Other(_) => encoding_rs::UTF_8,
+            DetectedEncoding::Other(name) => encoding_rs::Encoding::for_label(name.as_bytes())
+                .unwrap_or(encoding_rs::WINDOWS_1252),
         };
         let (text, had_errors) = codec.decode_without_bom_handling(bytes);
         (text.into_owned(), had_errors)
@@ -237,7 +471,7 @@ fn decode_with(bytes: &[u8], encoding: &DetectedEncoding) -> (String, bool) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "encoding"))]
 mod tests {
     use super::*;
     #[test]
@@ -293,11 +527,115 @@ mod tests {
     }
 
     #[test]
+    fn falls_back_to_windows1252_for_misleading_utf8_declaration() {
+        let source = decode(b"OFXHEADER:100\nENCODING:UTF-8\nCHARSET:NONE\n\n<OFX>Caf\xe9</OFX>");
+        assert_eq!(source.encoding, DetectedEncoding::Windows1252);
+        assert_eq!(
+            source.text,
+            "OFXHEADER:100\nENCODING:UTF-8\nCHARSET:NONE\n\n<OFX>Café</OFX>"
+        );
+        assert!(source.warnings.contains(&DecodeWarning::DeclaredEncoding {
+            declared: "UTF-8".to_owned(),
+            detected: DetectedEncoding::Windows1252,
+        }));
+        assert!(
+            !source
+                .warnings
+                .iter()
+                .any(|warning| { matches!(warning, DecodeWarning::MalformedInput { .. }) })
+        );
+    }
+
+    #[test]
+    fn decodes_bomless_unicode_with_ascii_header() {
+        let header = b"OFXHEADER:100\nENCODING:UNICODE\nCHARSET:NONE\n\n";
+        let body = "<OFX><NAME>Café</NAME></OFX>";
+        let mut bytes = header.to_vec();
+        for unit in body.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+
+        let source = decode(&bytes);
+        assert_eq!(source.encoding, DetectedEncoding::Utf16Le);
+        assert_eq!(
+            source.text,
+            format!("{}{}", String::from_utf8_lossy(header), body)
+        );
+        assert!(source.text.starts_with("OFXHEADER:100\nENCODING:UNICODE"));
+        assert!(source.text.ends_with(body));
+    }
+
+    #[test]
+    fn decodes_bomless_utf16be_with_ascii_header() {
+        let header = b"OFXHEADER:100\nENCODING:UTF-16BE\nCHARSET:NONE\n\n";
+        let body = "<OFX><NAME>Café</NAME></OFX>";
+        let mut bytes = header.to_vec();
+        for unit in body.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_be_bytes());
+        }
+
+        let source = decode(&bytes);
+        assert_eq!(source.encoding, DetectedEncoding::Utf16Be);
+        assert_eq!(
+            source.text,
+            format!("{}{}", String::from_utf8_lossy(header), body)
+        );
+    }
+
+    #[test]
+    fn utf8_declaration_does_not_use_charset_as_override() {
+        let source =
+            decode(b"OFXHEADER:100\nENCODING:UTF-8\nCHARSET:1252\n\n<OFX>Caf\xc3\xa9</OFX>");
+        assert_eq!(source.encoding, DetectedEncoding::Utf8);
+        assert_eq!(
+            source.text,
+            "OFXHEADER:100\nENCODING:UTF-8\nCHARSET:1252\n\n<OFX>Café</OFX>"
+        );
+        assert!(source.warnings.is_empty());
+    }
+
+    #[test]
+    fn unknown_xml_encoding_falls_back_only_when_utf8_is_invalid() {
+        let valid = decode(b"<?xml version=\"1.0\" encoding=\"unknown\"?>Caf\xc3\xa9");
+        assert_eq!(valid.encoding, DetectedEncoding::Utf8);
+        assert_eq!(
+            valid.text,
+            "<?xml version=\"1.0\" encoding=\"unknown\"?>Café"
+        );
+        assert!(
+            valid
+                .warnings
+                .contains(&DecodeWarning::UnsupportedDeclaredEncoding(
+                    "unknown".to_owned()
+                ))
+        );
+
+        let invalid = decode(b"<?xml version=\"1.0\" encoding=\"unknown\"?>Caf\xe9");
+        assert_eq!(invalid.encoding, DetectedEncoding::Windows1252);
+        assert_eq!(
+            invalid.text,
+            "<?xml version=\"1.0\" encoding=\"unknown\"?>Café"
+        );
+        assert!(
+            invalid
+                .warnings
+                .contains(&DecodeWarning::UnsupportedDeclaredEncoding(
+                    "unknown".to_owned()
+                ))
+        );
+        assert!(invalid.warnings.contains(&DecodeWarning::DeclaredEncoding {
+            declared: "unknown".to_owned(),
+            detected: DetectedEncoding::Windows1252,
+        }));
+    }
+
+    #[test]
     fn warns_when_declared_encoding_has_malformed_input() {
         let source = decode(b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\xff");
-        assert_eq!(source.encoding, DetectedEncoding::Utf8);
-        assert!(source.warnings.contains(&DecodeWarning::MalformedInput {
-            encoding: DetectedEncoding::Utf8,
+        assert_eq!(source.encoding, DetectedEncoding::Windows1252);
+        assert!(source.warnings.contains(&DecodeWarning::DeclaredEncoding {
+            declared: "UTF-8".to_owned(),
+            detected: DetectedEncoding::Windows1252,
         }));
     }
 

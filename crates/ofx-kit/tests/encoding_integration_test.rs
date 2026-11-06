@@ -1,3 +1,5 @@
+#![cfg(feature = "encoding")]
+
 use ofx_kit::{
     DecodeWarning, DetectedEncoding, OfxError, decode, parse_bytes, parse_bytes_with_warnings,
 };
@@ -89,4 +91,45 @@ fn byte_parse_returns_decode_warnings_with_the_document() {
             .iter()
             .any(|warning| matches!(warning, DecodeWarning::FallbackToWindows1252))
     );
+}
+
+#[test]
+fn decodes_legacy_numeric_charsets() {
+    let cases = [
+        ("1250", encoding_rs::WINDOWS_1250, "Zażółć"),
+        ("1251", encoding_rs::WINDOWS_1251, "Привет"),
+        ("1253", encoding_rs::WINDOWS_1253, "Αθήνα"),
+        ("1254", encoding_rs::WINDOWS_1254, "İstanbul"),
+        ("1255", encoding_rs::WINDOWS_1255, "שלום"),
+        ("1256", encoding_rs::WINDOWS_1256, "مرحبا"),
+        ("1257", encoding_rs::WINDOWS_1257, "Lietuva"),
+        ("1258", encoding_rs::WINDOWS_1258, "Đà"),
+        ("874", encoding_rs::WINDOWS_874, "สวัสดี"),
+        ("10000", encoding_rs::MACINTOSH, "Café"),
+    ];
+
+    for (charset, encoding, expected) in cases {
+        let (encoded, _, _) = encoding.encode(expected);
+        let mut source = format!(
+            "OFXHEADER:100\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:{charset}\n\n<OFX><NAME>"
+        )
+        .into_bytes();
+        source.extend_from_slice(&encoded);
+        source.extend_from_slice(b"</NAME></OFX>");
+
+        let decoded = decode(&source);
+        assert!(
+            decoded.text.contains(expected),
+            "charset {charset}: {:?}",
+            decoded.text
+        );
+        assert!(
+            !decoded
+                .warnings
+                .iter()
+                .any(|warning| matches!(warning, DecodeWarning::MalformedInput { .. })),
+            "charset {charset} warnings: {:?}",
+            decoded.warnings
+        );
+    }
 }
